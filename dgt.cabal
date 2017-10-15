@@ -18,9 +18,11 @@ executable dgt-exe
   main-is:             Main.hs
   ghc-options:         -fno-warn-tabs -threaded -rtsopts "-with-rtsopts=-N"
   other-extensions:    UnicodeSyntax,RecordWildCards,TypeSynonymInstances,FlexibleInstances,TupleSections,StandaloneDeriving
-  other-modules:       ChessLib,DGTSerial
+  other-modules:       Chess200,DGTSerial
   build-depends:       base >= 4.9 && <= 4.10,
                        serialport >= 0.4.7,
+                       base-unicode-symbols,
+                       monad-loops,
                        containers,
                        transformers,
                        bytestring,

@@ -14,7 +14,7 @@ import Data.Array
 import Data.Bits
 import qualified Data.Set as Set
 
-import ChessLib
+import Chess200
 
 
 serialportSettings = SerialPortSettings CS9600 8 One NoParity NoFlowControl 1
@@ -103,7 +103,7 @@ getBoard = do
 displayTextDGT :: String -> Bool -> DGTM ()
 displayTextDGT text beep = do
 	let msg = dGT_CLOCK_START_MESSAGE : dGT_CLOCK_ASCII :
-		map ord (take 8 text) ++ [0,if beep then 3 else 1,dGT_CLOCK_END_MESSAGE]
+		map ord (take 8 $ text ++ repeat ' ') ++ [0,if beep then 3 else 1,dGT_CLOCK_END_MESSAGE]
 	sendDGT dGT_CLOCK_MESSAGE (length msg : msg)
 
 displayClockDGT = do
@@ -128,15 +128,15 @@ recvParseMsgDGT time_out = do
 		Nothing -> return Nothing
 		Just (msg_id,msg) -> return $ Just $ case msg of
 			[filerank,piece] | msg_id==dGT_FIELD_UPDATE ->
-				FieldUpdate (toEnum (7 - mod filerank 8),div filerank 8 + 1) (lookupDGT2Square piece)
+				FieldUpdate (toEnum (7 - mod filerank 8 + 1),div filerank 8 + 1) (lookupDGT2Square piece)
 			[t0,t1,t2,t3,t4,t5,t6] | msg_id==dGT_BWTIME -> case t3 .&. 0x0f == 0x0a || t6 .&. 0x0f == 0x0a of
 				True  -> ClockAck t0 t1 t2 t3 t4 t5 t6
 				False | t6 .&. 1 == 0 -> NoClock
 				False -> do
 					let [hb,mb,sb,hw,mw,sw] = map fromBCD [t0,t1,t2,t3,t4,t5]
 					ClockTimes (TimeLeft hw mw sw) (TimeLeft hb mb sb)
-			squares | msg_id==dGT_BOARD_DUMP -> CurrentBoard $ array ((A,1),(H,8)) $
-				zip [ (f,r) | r <- [1..8], f <- [H,G .. A] ] $ map lookupDGT2Square msg
+			squares | msg_id==dGT_BOARD_DUMP -> CurrentBoard $ array ((1,1),(8,8)) $
+				zip [ (f,r) | r <- [1..8], f <- [8,7 .. 1] ] $ map lookupDGT2Square msg
 			_ -> OtherMsg msg_id msg
 
 getMoveDGT :: Position -> DGTM Move
