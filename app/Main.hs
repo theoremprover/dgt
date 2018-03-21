@@ -20,8 +20,12 @@ import Control.Monad.Loops
 
 import DGTSerial
 import Chess200
+import Lichess
 
 main = do
+	login "Threetee" "chiquI.1"
+
+main2 = do
 	serialport:args <- getArgs
 	withDGT serialport $ do
 		board <- getBoard
