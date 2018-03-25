@@ -23,7 +23,8 @@ import Chess200
 import Lichess
 
 main = do
-	login "Threetee" "chiquI.1"
+	path:args <- getArgs
+	login "Threetee" "chiquI.1" path
 
 main2 = do
 	serialport:args <- getArgs

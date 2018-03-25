@@ -1,4 +1,4 @@
-{-# LANGUAGE UnicodeSyntax,RecordWildCards,FlexibleInstances,OverlappingInstances,TupleSections #-}
+{-# LANGUAGE UnicodeSyntax,RecordWildCards,FlexibleInstances,TupleSections #-}
 {-# OPTIONS_GHC -fno-warn-tabs #-}
 
 module Chess200 where
@@ -26,7 +26,7 @@ type Board  = Array Coors Square
 type Square = Maybe (Colour,Piece)
 
 type Coors = (Int,Int)
-instance Show Coors where
+instance {-# OVERLAPS #-} Show Coors where
 	show (file,rank) = ['a'..]!!(file-1) : show rank
 
 data Position = Position {

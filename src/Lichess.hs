@@ -1,7 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# OPTIONS_GHC -fno-warn-tabs #-}
+
 module Lichess where
 
 import Network.HTTP.Simple
+import Network.HTTP.Conduit
 import qualified Data.ByteString.Char8 as BS
 import Data.Aeson
 import Data.Aeson.Types (explicitParseField)
@@ -14,8 +17,8 @@ import Control.Monad
 import Data.Time.Clock.POSIX
 import Data.Time.Clock
 
-login username password = do
-	response <- httpBS $ --httpJSON $
+login username password path = do
+	response <- httpBS $
 		setRequestMethod "POST" $
 		setRequestPath "/login" $
 		setRequestQueryString [("username",Just (BS.pack username)),("password",Just (BS.pack password))] $
@@ -26,11 +29,42 @@ login username password = do
 		defaultRequest
 
 	putStrLn $ "The status code was: " ++ show (getResponseStatus response)
+
+	let
+		cookiejar = responseCookieJar response
+		[cookie] = destroyCookieJar cookiejar
+		cookiename = cookie_name cookie
+		cookievalue = cookie_value cookie
+		cookietxt = cookiename `BS.append` "=" `BS.append` cookievalue
+
 	let bs = getResponseBody response
-	putStrLn (BS.unpack bs)
+	--putStrLn (BS.unpack bs)
 	case eitherDecodeStrict bs :: Either String User of
 		Left errmsg -> putStrLn errmsg
+		Right user -> do
+			print user
+
+			putStrLn "---------------------"
+
+			response2 <- httpBS $
+				setRequestMethod "POST" $
+				setRequestPath "/setup/ai" $
+				setRequestQueryString [("color",Just "white"),("days",Just "2"),("time",Just "5.0"),("fen",Just "8/8/6k1/B3p1p1/3bP1K1/5PP1/8/8+b+-+-"),("increment",Just "8"),("level",Just "2"),("timeMode",Just "0"),("variant",Just "1")] $
+				setRequestSecure True $
+				setRequestPort 443 $
+				setRequestHeaders [("Accept","application/vnd.lichess.v3+json"),("Cookie",cookietxt)] $
+				setRequestHost "lichess.org" $
+				defaultRequest --{ cookieJar = Just cookiejar }
+
+			putStrLn $ "The status code was: " ++ show (getResponseStatus response2)
+
+			let bs2 = getResponseBody response2
+			putStrLn (BS.unpack bs2)
+{-
+	case eitherDecodeStrict bs2 :: Either String User of
+		Left errmsg -> putStrLn errmsg
 		Right x -> print x
+-}
 
 --	print $ responseCookieJar response
 	-- set
@@ -89,19 +123,19 @@ data User = User {
 	userSeenAt     :: UTCTime,
 	userPlayTime   :: PlayTime,
 	userLang       :: String,
-	userNowPlaying :: [Game] } deriving Show
+	userNowPlaying :: Maybe [Game] } deriving Show
 instance FromJSON User where
 	parseJSON (Object v) = User <$>
-		v .: "id" <*>
-		v .: "username" <*>
-		v .: "online" <*>
-		v .: "perfs" <*>
+		v .:  "id" <*>
+		v .:  "username" <*>
+		v .:  "online" <*>
+		v .:  "perfs" <*>
 		explParse parsePosixSecs v "createdAt" <*>
-		v .: "profile" <*>
+		v .:  "profile" <*>
 		explParse parsePosixSecs v "seenAt" <*>
-		v .: "playTime" <*>
-		v .: "language" <*>
-		v .: "nowPlaying"
+		v .:  "playTime" <*>
+		v .:  "language" <*>
+		v .:? "nowPlaying"
 
 parsePosixSecs (Number n) = posixSecondsToUTCTime (realToFrac n / 1000)
 explParse f = explicitParseField (pure . f)
