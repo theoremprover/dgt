@@ -1,0 +1,54 @@
+name:                dgt
+version:             0.1.0.0
+github:              "theoremprover/dgt"
+license:             BSD3
+author:              "Robert"
+maintainer:          "haskell@thinking-machines.net"
+copyright:           "2018 Robert"
+
+extra-source-files:
+- README.md
+
+# Metadata used when publishing your package
+# synopsis:            Short description of your package
+# category:            Web
+
+# To avoid duplicated efforts in documentation and dealing with the
+# complications of embedding Haddock markup inside cabal files, it is
+# common to point users to the README.md file.
+description:         Please see the README on Github at <https://github.com/theoremprover/dgt#readme>
+
+dependencies:
+- base >= 4.7 && < 5
+- filepath
+- serialport >= 0.4.7
+- base-unicode-symbols
+- monad-loops
+- containers
+- transformers
+- bytestring
+- mtl
+- Stack
+- array
+- NumInstances >= 1.4
+- parallel >= 3.2.1.1
+- http-conduit >= 2.3.0
+- aeson
+- time
+- text
+- unordered-containers
+
+library:
+  source-dirs: src
+
+executables:
+  dgt-exe:
+    main:                Main.hs
+    source-dirs:         app
+    ghc-options:
+    - -fno-warn-tabs
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - dgt
