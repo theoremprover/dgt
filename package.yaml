@@ -37,6 +37,8 @@ dependencies:
 - time
 - text
 - unordered-containers
+- http-types
+- case-insensitive
 
 library:
   source-dirs: src

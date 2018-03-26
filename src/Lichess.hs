@@ -1,10 +1,11 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings,RecordWildCards,ScopedTypeVariables #-}
 {-# OPTIONS_GHC -fno-warn-tabs #-}
 
 module Lichess where
 
 import Network.HTTP.Simple
 import Network.HTTP.Conduit
+import Network.HTTP.Types.Status (Status(..))
 import qualified Data.ByteString.Char8 as BS
 import Data.Aeson
 import Data.Aeson.Types (explicitParseField)
@@ -13,53 +14,73 @@ import Data.Time.Clock
 import qualified Data.HashMap.Strict as HM
 import qualified Data.Text as T
 import Control.Monad
+import Control.Monad.IO.Class (MonadIO,liftIO)
+import Control.Monad.Trans.State
+import Data.CaseInsensitive (mk)
 
 import Data.Time.Clock.POSIX
 import Data.Time.Clock
 
-login username password path = do
-	response <- httpBS $
+data LichessState = LichessState {
+	lisAuthCookie :: String } deriving Show
+
+type LichessM m a = StateT LichessState m a
+
+rawLichessRequest :: (FromJSON val,MonadIO m) => String -> [(String,Maybe String)] -> [(String,String)] -> m (Response BS.ByteString,val)
+rawLichessRequest path querystring headers = do
+	response <- liftIO $ httpBS $
 		setRequestMethod "POST" $
-		setRequestPath "/login" $
-		setRequestQueryString [("username",Just (BS.pack username)),("password",Just (BS.pack password))] $
+		setRequestPath (BS.pack path) $
+		setRequestQueryString (map (\(a,b) -> (BS.pack a,fmap BS.pack b)) querystring) $
 		setRequestSecure True $
 		setRequestPort 443 $
-		setRequestHeaders [("Accept","application/vnd.lichess.v3+json")] $
+		setRequestHeaders ([("Accept","application/vnd.lichess.v3+json")] ++ map (\(a,b) -> (mk (BS.pack a),BS.pack b)) headers) $
 		setRequestHost "lichess.org" $
-		defaultRequest
-
-	putStrLn $ "The status code was: " ++ show (getResponseStatus response)
-
-	let
-		cookiejar = responseCookieJar response
-		[cookie] = destroyCookieJar cookiejar
-		cookiename = cookie_name cookie
-		cookievalue = cookie_value cookie
-		cookietxt = cookiename `BS.append` "=" `BS.append` cookievalue
-
+		defaultRequest	
 	let bs = getResponseBody response
-	--putStrLn (BS.unpack bs)
-	case eitherDecodeStrict bs :: Either String User of
-		Left errmsg -> putStrLn errmsg
-		Right user -> do
-			print user
+	case eitherDecodeStrict bs of
+		Left errmsg -> error errmsg
+		Right val -> return (response,val)
 
-			putStrLn "---------------------"
+lichessRequestL :: (FromJSON val,MonadIO m) => String -> [(String,Maybe String)] -> LichessM m (Status,val)
+lichessRequestL path querystring = do
+	authcookie <- gets lisAuthCookie
+	(response,val) <- rawLichessRequest path querystring [("Cookie",authcookie)]
+	return (getResponseStatus response,val)
 
-			response2 <- httpBS $
-				setRequestMethod "POST" $
-				setRequestPath "/setup/ai" $
-				setRequestQueryString [("color",Just "white"),("days",Just "2"),("time",Just "5.0"),("fen",Just "8/8/6k1/B3p1p1/3bP1K1/5PP1/8/8+b+-+-"),("increment",Just "8"),("level",Just "2"),("timeMode",Just "0"),("variant",Just "1")] $
-				setRequestSecure True $
-				setRequestPort 443 $
-				setRequestHeaders [("Accept","application/vnd.lichess.v3+json"),("Cookie",cookietxt)] $
-				setRequestHost "lichess.org" $
-				defaultRequest --{ cookieJar = Just cookiejar }
+withLoginL :: (MonadIO m) => String -> String -> LichessM m a -> m a
+withLoginL username password lichessm = do
+	(response,user::User) <- rawLichessRequest "/login" [("username",Just username),("password",Just password)] []
+	let Status{..} = getResponseStatus response
+	case statusCode == 200 of
+		False -> error $ "withLoginL: " ++ BS.unpack statusMessage
+		True  -> do
+			--putStrLn (BS.unpack bs)
+--			liftIO $ print user
+			liftIO $ putStrLn "OK, logged in."
+			
+			let [Cookie{..}] = destroyCookieJar $ responseCookieJar response
+			evalStateT lichessm $ LichessState {
+				lisAuthCookie = BS.unpack cookie_name ++ "=" ++ BS.unpack cookie_value }
 
-			putStrLn $ "The status code was: " ++ show (getResponseStatus response2)
+{-
+					putStrLn "---------------------"
 
-			let bs2 = getResponseBody response2
-			putStrLn (BS.unpack bs2)
+					response2 <- httpBS $
+						setRequestMethod "POST" $
+						setRequestPath "/setup/ai" $
+						setRequestQueryString [("color",Just "white"),("days",Just "2"),("time",Just "5.0"),("fen",Just "8/8/6k1/B3p1p1/3bP1K1/5PP1/8/8+b+-+-"),("increment",Just "8"),("level",Just "2"),("timeMode",Just "0"),("variant",Just "1")] $
+						setRequestSecure True $
+						setRequestPort 443 $
+						setRequestHeaders [("Accept","application/vnd.lichess.v3+json"),("Cookie",cookietxt)] $
+						setRequestHost "lichess.org" $
+						defaultRequest --{ cookieJar = Just cookiejar }
+
+					putStrLn $ "The status code was: " ++ show (getResponseStatus response2)
+
+					let bs2 = getResponseBody response2
+					putStrLn (BS.unpack bs2)
+-}
 {-
 	case eitherDecodeStrict bs2 :: Either String User of
 		Left errmsg -> putStrLn errmsg
@@ -73,6 +94,10 @@ login username password path = do
 	print response
 --}
 --	print $ (getResponseBody response :: Value)
+
+startGameL :: (MonadIO m) => LichessM m ()
+startGameL = do
+	liftIO $ putStrLn "startGameL"
 
 data Perf = Perf {
 	perfGames  :: Int,
