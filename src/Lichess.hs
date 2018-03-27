@@ -63,6 +63,10 @@ withLoginL username password lichessm = do
 			evalStateT lichessm $ LichessState {
 				lisAuthCookie = BS.unpack cookie_name ++ "=" ++ BS.unpack cookie_value }
 
+startGameL :: (MonadIO m) => LichessM m ()
+startGameL opponent_class preset mb_colour mb_fen = do
+	lichessRequestL 
+
 {-
 					putStrLn "---------------------"
 
@@ -95,9 +99,7 @@ withLoginL username password lichessm = do
 --}
 --	print $ (getResponseBody response :: Value)
 
-startGameL :: (MonadIO m) => LichessM m ()
-startGameL = do
-	liftIO $ putStrLn "startGameL"
+data OpponentClass = AI | 
 
 data Perf = Perf {
 	perfGames  :: Int,
