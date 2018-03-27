@@ -24,7 +24,7 @@ import Lichess
 
 main = do
 	withLoginL "Threetee" (map fst $ filter ((<1).(`mod` 2).snd) $ zip "c1h5iAqXufI_.$1F" [0..]) $ do
-		startGameL
+		startGameL Nothing (Just White)
 
 main2 = do
 	serialport:args <- getArgs

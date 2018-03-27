@@ -21,8 +21,11 @@ import Data.CaseInsensitive (mk)
 import Data.Time.Clock.POSIX
 import Data.Time.Clock
 
+import Chess200
+
 data LichessState = LichessState {
-	lisAuthCookie :: String } deriving Show
+	lisAuthCookie :: String,
+	myColour      :: Colour } deriving Show
 
 type LichessM m a = StateT LichessState m a
 
@@ -39,13 +42,16 @@ rawLichessRequest path querystring headers = do
 		defaultRequest	
 	let bs = getResponseBody response
 	case eitherDecodeStrict bs of
-		Left errmsg -> error errmsg
+		Left errmsg -> do
+			liftIO $ putStrLn $ "rawLichessRequest response body: " ++ BS.unpack bs
+			error $ "rawLichessRequest eitherDecodeStrict: " ++ errmsg
 		Right val -> return (response,val)
 
 lichessRequestL :: (FromJSON val,MonadIO m) => String -> [(String,Maybe String)] -> LichessM m (Status,val)
 lichessRequestL path querystring = do
 	authcookie <- gets lisAuthCookie
 	(response,val) <- rawLichessRequest path querystring [("Cookie",authcookie)]
+	liftIO $ BS.putStrLn $ getResponseBody response
 	return (getResponseStatus response,val)
 
 withLoginL :: (MonadIO m) => String -> String -> LichessM m a -> m a
@@ -55,51 +61,85 @@ withLoginL username password lichessm = do
 	case statusCode == 200 of
 		False -> error $ "withLoginL: " ++ BS.unpack statusMessage
 		True  -> do
-			--putStrLn (BS.unpack bs)
---			liftIO $ print user
 			liftIO $ putStrLn "OK, logged in."
 			
 			let [Cookie{..}] = destroyCookieJar $ responseCookieJar response
 			evalStateT lichessm $ LichessState {
-				lisAuthCookie = BS.unpack cookie_name ++ "=" ++ BS.unpack cookie_value }
+				lisAuthCookie = BS.unpack cookie_name ++ "=" ++ BS.unpack cookie_value,
+				myColour = White }
 
-startGameL :: (MonadIO m) => LichessM m ()
-startGameL opponent_class preset mb_colour mb_fen = do
-	lichessRequestL 
+startGameL :: (MonadIO m) => Maybe Position -> Maybe Colour -> LichessM m (Maybe Game)
+startGameL mb_position mb_colour = do
+	(Status{..},game) <- lichessRequestL "/setup/ai" [
+		("color",Just "white" ), -- $ maybe "random" show mb_colour),
+		("days",Just "2"),("time",Just "5.0"),
+		("fen",Just "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"),
+		("increment",Just "8"),
+		("level",Just "2"),
+		("timeMode",Just "0"),
+		("variant",Just "1") ]
+	liftIO $ putStrLn $ "StatusCode: " ++ show statusCode
+	return game
 
 {-
-					putStrLn "---------------------"
-
-					response2 <- httpBS $
-						setRequestMethod "POST" $
-						setRequestPath "/setup/ai" $
-						setRequestQueryString [("color",Just "white"),("days",Just "2"),("time",Just "5.0"),("fen",Just "8/8/6k1/B3p1p1/3bP1K1/5PP1/8/8+b+-+-"),("increment",Just "8"),("level",Just "2"),("timeMode",Just "0"),("variant",Just "1")] $
-						setRequestSecure True $
-						setRequestPort 443 $
-						setRequestHeaders [("Accept","application/vnd.lichess.v3+json"),("Cookie",cookietxt)] $
-						setRequestHost "lichess.org" $
-						defaultRequest --{ cookieJar = Just cookiejar }
-
-					putStrLn $ "The status code was: " ++ show (getResponseStatus response2)
-
-					let bs2 = getResponseBody response2
-					putStrLn (BS.unpack bs2)
+rawLichessRequest response body: {
+"game":{
+	"id":"cNoq5g57",
+	"variant":{
+		"key":"standard","name":"Standard","short":"Std"},
+	"speed":"correspondence",
+	"perf":"correspondence",
+	"rated":false,
+	"initialFen":"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+	"fen":"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+	"player":"white",
+	"turns":0,
+	"startedAtTurn":0,
+	"source":"ai",
+	"status":{"id":20,"name":"started"},
+	"createdAt":1522182914716
+	},
+"player":{
+	"color":"white",
+	"user":{
+		"id":"threetee",
+		"username":"Threetee",
+		"online":true,
+		"perfs":{
+			"correspondence":{
+				"games":16,"rating":1608,"rd":133,"prog":127,"prov":true }},
+		"language":"de-DE",
+		"profile":{"country":"DE"}},
+	"rating":1608,
+	"provisional":true,
+	"id":"uhAS",
+	"version":0},
+"opponent":{
+	"color":"black",
+	"ai":2,
+	"onGame":true},
+"url":{
+	"socket":"/cNoq5g57uhAS/socket/v3",
+	"round":"/cNoq5g57uhAS"},
+"pref":{
+	"animationDuration":300,
+	"coords":2,
+	"replay":2,
+	"autoQueen":2,
+	"clockTenths":1,
+	"moveEvent":2,
+	"clockBar":true,
+	"clockSound":true,
+	"rookCastle":true,
+	"highlight":true,
+	"destination":true,
+	"showCaptured":true},
+"takebackable":true,
+"possibleMoves":{"b2":"b3b4","g2":"g3g4","c2":"c3c4","b1":"a3c3","g1":"f3h3","h2":"h3h4","d2":"d3d4","e2":"e3e4","a2":"a3a4","f2":"f3f4"},
+"steps":[
+	{"ply":0,"uci":null,"san":null,"fen":"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"}]
+}
 -}
-{-
-	case eitherDecodeStrict bs2 :: Either String User of
-		Left errmsg -> putStrLn errmsg
-		Right x -> print x
--}
-
---	print $ responseCookieJar response
-	-- set
-{--
-	BS.putStrLn (getResponseBody response)
-	print response
---}
---	print $ (getResponseBody response :: Value)
-
-data OpponentClass = AI | 
 
 data Perf = Perf {
 	perfGames  :: Int,
