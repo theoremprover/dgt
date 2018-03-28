@@ -17,7 +17,7 @@ import Control.Monad
 import Control.Monad.IO.Class (MonadIO,liftIO)
 import Control.Monad.Trans.State
 import Data.CaseInsensitive (mk)
-
+import Data.Char (toLower)
 import Data.Time.Clock.POSIX
 import Data.Time.Clock
 
@@ -71,7 +71,7 @@ withLoginL username password lichessm = do
 startGameL :: (MonadIO m) => Maybe Position -> Maybe Colour -> LichessM m (Maybe Game)
 startGameL mb_position mb_colour = do
 	(Status{..},game) <- lichessRequestL "/setup/ai" [
-		("color",Just "white" ), -- $ maybe "random" show mb_colour),
+		("color",Just $ maybe "random" (map toLower . show) mb_colour),
 		("days",Just "2"),("time",Just "5.0"),
 		("fen",Just "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"),
 		("increment",Just "8"),
@@ -140,6 +140,31 @@ rawLichessRequest response body: {
 	{"ply":0,"uci":null,"san":null,"fen":"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"}]
 }
 -}
+
+data CreatedGame = CreatedGame {
+	cgGame :: GameInfo,
+	cgPlayer :: PlayerInfo,
+	cgOpponent :: Opponent,
+	cgURL :: GameURL,
+	cgPref :: GamePref,
+	cgTakebackable :: Bool,
+	cgPossibleMoves :: PossibleMoves,
+	cgSteps :: 
+
+	"id":"cNoq5g57",
+	"variant":{
+		"key":"standard","name":"Standard","short":"Std"},
+	"speed":"correspondence",
+	"perf":"correspondence",
+	"rated":false,
+	"initialFen":"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+	"fen":"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+	"player":"white",
+	"turns":0,
+	"startedAtTurn":0,
+	"source":"ai",
+	"status":{"id":20,"name":"started"},
+	"createdAt":1522182914716
 
 data Perf = Perf {
 	perfGames  :: Int,
