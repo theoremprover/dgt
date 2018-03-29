@@ -27,7 +27,10 @@ main = do
 		mb_gamedata <- startGameL Nothing (Just White)
 		case mb_gamedata of
 			Nothing -> liftIO $ putStrLn "Something went wrong."
-			Just gamedata -> liftIO $ print gamedata
+			Just gamedata -> do
+				liftIO $ print gamedata
+				moveL "e2" "e4"
+				return ()
 
 main2 = do
 	serialport:args <- getArgs

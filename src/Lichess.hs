@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings,RecordWildCards,ScopedTypeVariables #-}
+{-# LANGUAGE OverloadedStrings,RecordWildCards,ScopedTypeVariables,DuplicateRecordFields #-}
 {-# OPTIONS_GHC -fno-warn-tabs #-}
 
 module Lichess where
@@ -18,7 +18,8 @@ import LichessInterface
 
 data LichessState = LichessState {
 	lisAuthCookie :: String,
-	myColour      :: Colour } deriving Show
+	myColour      :: Colour,
+	currentGameID :: Maybe String } deriving Show
 
 type LichessM m a = StateT LichessState m a
 
@@ -42,6 +43,7 @@ rawLichessRequest path querystring headers = do
 
 lichessRequestL :: (FromJSON val,MonadIO m) => String -> [(String,Maybe String)] -> LichessM m (Status,val)
 lichessRequestL path querystring = do
+	liftIO $ putStrLn $ "lichessRequestL path=" ++ path
 	authcookie <- gets lisAuthCookie
 	(response,val) <- rawLichessRequest path querystring [("Cookie",authcookie)]
 --	liftIO $ BS.putStrLn $ getResponseBody response
@@ -58,7 +60,8 @@ withLoginL username password lichessm = do
 			let [Cookie{..}] = destroyCookieJar $ responseCookieJar response
 			evalStateT lichessm $ LichessState {
 				lisAuthCookie = BS.unpack cookie_name ++ "=" ++ BS.unpack cookie_value,
-				myColour = White }
+				myColour = White,
+				currentGameID = Nothing }
 
 startGameL :: (MonadIO m) => Maybe Position -> Maybe Colour -> LichessM m (Maybe GameData)
 startGameL mb_position mb_colour = do
@@ -71,4 +74,16 @@ startGameL mb_position mb_colour = do
 		("timeMode",Just "0"),
 		("variant",Just "1") ]
 	liftIO $ BS.putStrLn statusMessage
+	case mb_gamedata of
+		Nothing -> return ()
+		Just gamedata -> do
+			modify $ \ s -> s { currentGameID = Just $ LichessInterface.id ((game (gamedata::GameData))::CreatedGame) }
 	return mb_gamedata
+
+moveL :: (MonadIO m) => String -> String -> LichessM m (Status,())
+moveL from to = do
+	Just gameid <- gets currentGameID
+	lichessRequestL ("/game/" ++ gameid) [
+		("orig",Just from),("dest",Just to),
+		("fen",Just "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"),
+		("variant",Just "standard") ]

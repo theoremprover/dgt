@@ -3,7 +3,7 @@
 
 module LichessInterface (
 	module Data.Aeson,
-	User(..),GameData(..)
+	User(..),GameData(..),CreatedGame(..)
 	) where
 
 import Data.Aeson
@@ -166,95 +166,48 @@ instance FromJSON PossibleMoves where
 	parseJSON = withObject "PossibleMoves" $ \ v -> PossibleMoves <$> parseObjectToAssocList v
 
 {-
-rawLichessRequest response body: {
-"game":{
-	"id":"cNoq5g57",
-	"variant":{
-		"key":"standard","name":"Standard","short":"Std"},
-	"speed":"correspondence",
-	"perf":"correspondence",
-	"rated":false,
-	"initialFen":"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
-	"fen":"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
-	"player":"white",
-	"turns":0,
-	"startedAtTurn":0,
-	"source":"ai",
-	"status":{"id":20,"name":"started"},
-	"createdAt":1522182914716
-	},
-"player":{
-	"color":"white",
-	"user":{
-		"id":"threetee",
-		"username":"Threetee",
-		"online":true,
-		"perfs":{
-			"correspondence":{
-				"games":16,"rating":1608,"rd":133,"prog":127,"prov":true }},
-		"language":"de-DE",
-		"profile":{"country":"DE"}},
-	"rating":1608,
-	"provisional":true,
-	"id":"uhAS",
-	"version":0},
-"opponent":{
-	"color":"black",
-	"ai":2,
-	"onGame":true},
-"url":{
-	"socket":"/cNoq5g57uhAS/socket/v3",
-	"round":"/cNoq5g57uhAS"},
-"pref":{
-	"animationDuration":300,
-	"coords":2,
-	"replay":2,
-	"autoQueen":2,
-	"clockTenths":1,
-	"moveEvent":2,
-	"clockBar":true,
-	"clockSound":true,
-	"rookCastle":true,
-	"highlight":true,
-	"destination":true,
-	"showCaptured":true},
-"takebackable":true,
-"possibleMoves":{"b2":"b3b4","g2":"g3g4","c2":"c3c4","b1":"a3c3","g1":"f3h3","h2":"h3h4","d2":"d3d4","e2":"e3e4","a2":"a3a4","f2":"f3f4"},
-"steps":[
-	{"ply":0,"uci":null,"san":null,"fen":"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"}]
+export interface MoveOrDrop {
+  readonly fen: string
+  readonly threefold: boolean
+  readonly check: boolean
+  readonly ply: number
+  readonly wDraw: boolean
+  readonly bDraw: boolean
+  readonly uci: string
+  readonly san: string
+  readonly dests: StringMap
+  readonly status?: GameStatus
+  readonly winner?: Color
+  readonly crazyhouse?: {
+    readonly pockets: Pockets
+  }
+  clock?: {
+    readonly white: number
+    readonly black: number
+    readonly lag?: number
+  }
+  readonly promotion?: {
+    readonly key: Key
+    readonly pieceClass: Role
+  }
+  readonly enpassant?: {
+    readonly key: Key
+    readonly color: Color
+  }
+  readonly drops?: Array<string>
+  readonly castle?: {
+    readonly king: KeyPair
+    readonly rook: KeyPair
+    readonly color: Color
+  }
+}
 
+export interface Move extends MoveOrDrop {
+  isMove: boolean
+}
 
 ----------------------
 
-
-rawLichessRequest response body: {
-"id":"threetee",
-"username":"Threetee",
-"online":false,
-"perfs":{"blitz":{"games":2035,"rating":1467,"rd":60,"prog":-40},"bullet":{"games":747,"rating":1366,
-"rd":60,"prog":-23},"correspondence":{"games":16,"rating":1608,"rd":133,"prog":127,"prov":true
-},"puzzle":{"games":2430,"rating":1636,"rd":61,"prog":101},"classical":{"games":5,"rating":165
-4,"rd":150,"prog":0,"prov":true},"rapid":{"games":255,"rating":1654,"rd":63,"prog":0}},"create
-dAt":1449173808339,"profile":{"country":"DE","firstName":"Robert"},"seenAt":1522267844474,"pla
-yTime":{"total":1505994,"tv":0},"language":"de-DE","nowPlaying":[{"fullId":"JVPvX1BxWW1y","gam
-eId":"JVPvX1Bx","fen":"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR","color":"white","lastMove"
-:"","variant":{"key":"standard","name":"Standard"},"speed":"correspondence","perf":"correspond
-ence","rated":false,"opponent":{"id":null,"username":"A.I. level 2","ai":2},"isMyTurn":true,"s
-econdsLeft":null},{"fullId":"UZyB33TabQ9C","gameId":"UZyB33Ta","fen":"rnbqkbnr/pppppppp/8/8/8/
-8/PPPPPPPP/RNBQKBNR","color":"white","lastMove":"","variant":{"key":"standard","name":"Standar
-d"},"speed":"correspondence","perf":"correspondence","rated":false,"opponent":{"id":null,"user
-name":"A.I. level 2","ai":2},"isMyTurn":true,"secondsLeft":null},{"fullId":"5BFmVPoMiTVe","gam
-eId":"5BFmVPoM","fen":"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR","color":"white","lastMove"
-:"","variant":{"key":"standard","name":"Standard"},"speed":"correspondence","perf":"correspond
-ence","rated":false,
-"opponent":{"id":null,"username":"A.I. level 2","ai":2},"isMyTurn":true,"s
-econdsLeft":null},{"fullId":"x0UtnMItCjio","gameId":"x0UtnMIt","fen":"rnbqkbnr/pppppppp/8/8/8/
-8/PPPPPPPP/RNBQKBNR","color":"white","lastMove":"","variant":{"key":"standard","name":"Standar
-d"},"speed":"correspondence","perf":"correspondence","rated":false,"opponent":{"id":null,"user
-name":"A.I. level 2","ai":2},"isMyTurn":true,"secondsLeft":null}]}
-dgt-exe.EXE: rawLichessRequest eitherDecodeStrict: Error in $.nowPlaying[0].opponent: key "col
-or" not present
-}
 
 
 -}
