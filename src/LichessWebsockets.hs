@@ -1,39 +1,56 @@
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE OverloadedStrings,RecordWildCards #-}
 {-# OPTIONS_GHC -fno-warn-tabs #-}
 
 module LichessWebsockets where
 
+import Network.Connection
+import Wuss
 import Network.Socket (withSocketsDo)
+import Network.TLS
 import Data.Text (Text)
-import qualified Data.Text as T
-import qualified Data.Text.IO as T
-import qualified Network.WebSockets as WS
+import qualified Data.ByteString.Lazy as BS
+import Network.WebSockets as WS
+import Network.WebSockets.Stream
 import Control.Monad.IO.Class (MonadIO,liftIO)
 import Control.Monad.Trans.State
+import System.Random
 
 import Chess200
+import Lichess
 
-type GameData = String
+type InGameM a = StateT InGameState LichessM a
 
-data LichessState = LichessState {
-	myColour      :: Colour,
-	currentGameID :: Maybe String } deriving Show
+data InGameState = InGameState {
+	igsConnection :: Connection } deriving Show
 
-type LichessM m a = StateT LichessState m a
+inGameL :: ImGameM a -> LichessM a
+inGameL ingamem = do
+	clientID <- forM [1..10] $ \ _ -> getStdRandom (randomR ('a','z'))
+	Just socketurl <- gets socketURL
+	let baseurl = socketurl ++ "?sri=" ++ clientID ++ "&version=" ++ socketVersion
+	withSocketsDo $ do
+		let (host,port,options,headers) = ("socket.lichess.org",9021,defaultConnectionOptions,[]) 
+		context <- initConnectionContext
+		connection <- connectTo context $ ConnectionParams {
+			connectionHostname = host, connectionPort = port,
+			connectionUseSecure = Just $ TLSSettingsSimple {
+				settingDisableCertificateValidation = True,
+				settingDisableSession = False,
+				settingUseServerName = False },
+			connectionUseSocks = Nothing }
+		stream <- makeStream
+			(fmap Just (connectionGetChunk connection))
+			(maybe (return ()) (connectionPut connection . BS.toStrict))
+		WS.runClientWithStream stream host baseurl options headers $ \ conn -> do
+			evalStateT ingamem $ InGameState conn
 
-withLoginL :: (MonadIO m) => String -> String -> LichessM m a -> m a
-withLoginL username password lichessm = liftIO $ do
-	withSocketsDo $ WS.runClient "echo.websocket.org" 80 "/" $ \ conn -> do
-		WS.sendTextData conn "TESTLINE!"
-		WS.receiveData conn >>= T.putStrLn
-		evalStateT lichessm $ LichessState {
-			myColour = White,
-			currentGameID = Nothing }
+sendL :: String -> String 
 
-startGameL :: (MonadIO m) => Maybe Position -> Maybe Colour -> LichessM m (Maybe GameData)
-startGameL mb_position mb_colour = do
-	return $ Just "SOMEID"
+{-
+			WS.sendTextData conn ("TESTLINE!" :: BS.ByteString)
+			WS.receiveData conn >>= BS.putStrLn
+-}
 
-moveL :: (MonadIO m) => String -> String -> LichessM m ()
-moveL from to = do
+moveG :: String -> String -> LichessM ()
+moveG from to = do
 	return ()

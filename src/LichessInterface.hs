@@ -1,6 +1,10 @@
 {-# LANGUAGE OverloadedStrings,DuplicateRecordFields,DeriveGeneric #-}
 {-# OPTIONS_GHC -fno-warn-tabs #-}
 
+{-
+https://github.com/ornicar/lila/blob/master/doc/mobile/play.md
+-}
+
 module LichessInterface (
 	module Data.Aeson,
 	User(..),GameData(..),CreatedGame(..)
@@ -18,6 +22,8 @@ import Data.Time.Clock.POSIX
 
 import Chess200
 
+
+socketVersion = "3"
 
 data Profile = Profile {
 	country   :: Maybe String,

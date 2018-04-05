@@ -41,6 +41,9 @@ dependencies:
 - case-insensitive
 - websockets
 - network
+- wuss
+- tls
+- connection
 
 library:
   source-dirs: src

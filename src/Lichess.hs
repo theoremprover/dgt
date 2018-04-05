@@ -8,20 +8,22 @@ import Network.HTTP.Conduit
 import Network.HTTP.Types.Status (Status(..))
 import qualified Data.ByteString.Char8 as BS
 import Data.Aeson.Types (explicitParseField)
-import Control.Monad.IO.Class (MonadIO,liftIO)
-import Control.Monad.Trans.State
+import Control.Monad.IO.Class (liftIO)
 import Data.CaseInsensitive (mk)
 import Data.Char (toLower)
+import Control.Monad.Trans.State
 
 import Chess200
 import LichessInterface
 
+
 data LichessState = LichessState {
 	lisAuthCookie :: String,
 	myColour      :: Colour,
-	currentGameID :: Maybe String } deriving Show
+	currentGameID :: Maybe String,
+	socketURL     :: Maybe String } deriving Show
 
-type LichessM m a = StateT LichessState m a
+type LichessM a = StateT LichessState IO a
 
 rawLichessRequest :: (FromJSON val,MonadIO m) => String -> [(String,Maybe String)] -> [(String,String)] -> m (Response BS.ByteString,val)
 rawLichessRequest path querystring headers = do
@@ -41,7 +43,7 @@ rawLichessRequest path querystring headers = do
 			error $ "rawLichessRequest eitherDecodeStrict: " ++ errmsg
 		Right val -> return (response,val)
 
-lichessRequestL :: (FromJSON val,MonadIO m) => String -> [(String,Maybe String)] -> LichessM m (Status,val)
+lichessRequestL :: (FromJSON val) => String -> [(String,Maybe String)] -> LichessM (Status,val)
 lichessRequestL path querystring = do
 	liftIO $ putStrLn $ "lichessRequestL path=" ++ path
 	authcookie <- gets lisAuthCookie
@@ -49,7 +51,7 @@ lichessRequestL path querystring = do
 --	liftIO $ BS.putStrLn $ getResponseBody response
 	return (getResponseStatus response,val)
 
-withLoginL :: (MonadIO m) => String -> String -> LichessM m a -> m a
+withLoginL :: String -> String -> LichessM a -> IO a
 withLoginL username password lichessm = do
 	(response,user::User) <- rawLichessRequest "/login" [("username",Just username),("password",Just password)] []
 	let Status{..} = getResponseStatus response
@@ -63,7 +65,7 @@ withLoginL username password lichessm = do
 				myColour = White,
 				currentGameID = Nothing }
 
-startGameL :: (MonadIO m) => Maybe Position -> Maybe Colour -> LichessM m (Maybe GameData)
+startGameL :: Maybe Position -> Maybe Colour -> LichessM (Maybe GameData)
 startGameL mb_position mb_colour = do
 	(Status{..},mb_gamedata) <- lichessRequestL "/setup/ai" [
 		("color",Just $ maybe "random" (map toLower . show) mb_colour),
@@ -77,13 +79,7 @@ startGameL mb_position mb_colour = do
 	case mb_gamedata of
 		Nothing -> return ()
 		Just gamedata -> do
-			modify $ \ s -> s { currentGameID = Just $ LichessInterface.id ((game (gamedata::GameData))::CreatedGame) }
+			modify $ \ s -> s {
+				currentGameID = Just $ LichessInterface.id ((game (gamedata::GameData))::CreatedGame),
+				socketURL     = Just $ socket (url gamedata) }
 	return mb_gamedata
-
-moveL :: (MonadIO m) => String -> String -> LichessM m (Status,())
-moveL from to = do
-	Just gameid <- gets currentGameID
-	lichessRequestL ("/game/" ++ gameid) [
-		("orig",Just from),("dest",Just to),
-		("fen",Just "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"),
-		("variant",Just "standard") ]
