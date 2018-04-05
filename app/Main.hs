@@ -20,7 +20,8 @@ import Control.Monad.Loops
 
 import DGTSerial
 import Chess200
-import Lichess
+--import Lichess
+import LichessWebsockets
 
 main = do
 	withLoginL "Threetee" (map fst $ filter ((<1).(`mod` 2).snd) $ zip "c1h5iAqXufI_.$1F" [0..]) $ do

@@ -39,6 +39,8 @@ dependencies:
 - unordered-containers
 - http-types
 - case-insensitive
+- websockets
+- network
 
 library:
   source-dirs: src

@@ -1,4 +1,5 @@
 {-# LANGUAGE RecordWildCards,TupleSections #-}
+{-# OPTIONS_GHC -fno-warn-tabs #-}
 
 module DGTSerial where
 
