@@ -44,8 +44,10 @@ inGameL ingamem = do
 		WS.runClientWithStream stream host baseurl options headers $ \ conn -> do
 			evalStateT ingamem $ InGameState conn
 
-sendL :: String -> String 
 
+
+sendG :: String -> String 
+sendG
 {-
 			WS.sendTextData conn ("TESTLINE!" :: BS.ByteString)
 			WS.receiveData conn >>= BS.putStrLn

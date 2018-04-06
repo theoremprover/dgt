@@ -171,6 +171,14 @@ data PossibleMoves = PossibleMoves [(String,String)] deriving Show
 instance FromJSON PossibleMoves where
 	parseJSON = withObject "PossibleMoves" $ \ v -> PossibleMoves <$> parseObjectToAssocList v
 
+data LichessMsg d = LichessMsg {
+	t :: String,
+	d :: Maybe d }
+instance (FromJSON d) => FromJSON (LichessMsg d)
+
+instance FromJSON Move where
+	parseJSON (Move 
+
 {-
 export interface MoveOrDrop {
   readonly fen: string
