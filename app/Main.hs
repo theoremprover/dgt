@@ -20,7 +20,7 @@ import Control.Monad.Loops
 
 import DGTSerial
 import Chess200
---import Lichess
+import Lichess
 import LichessWebsockets
 
 main = do
@@ -31,7 +31,7 @@ main = do
 			Nothing -> liftIO $ putStrLn "Something went wrong."
 			Just gamedata -> do
 				liftIO $ print gamedata
-				moveL "e2" "e4"
+				moveG (Move (5,2) (5,4) Nothing Nothing)
 				return ()
 
 main2 = do

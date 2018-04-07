@@ -1,14 +1,11 @@
-{-# LANGUAGE OverloadedStrings,DuplicateRecordFields,DeriveGeneric #-}
+{-# LANGUAGE OverloadedStrings,DuplicateRecordFields,DeriveGeneric,RecordWildCards #-}
 {-# OPTIONS_GHC -fno-warn-tabs #-}
 
 {-
 https://github.com/ornicar/lila/blob/master/doc/mobile/play.md
 -}
 
-module LichessInterface (
-	module Data.Aeson,
-	User(..),GameData(..),CreatedGame(..)
-	) where
+module LichessInterface where
 
 import Data.Aeson
 import Data.Aeson.Types
@@ -120,14 +117,14 @@ data CreatedGame = CreatedGame {
 	turns         :: Depth,
 	startedAtTurn :: Depth,
 	source        :: String,
-	status        :: Status,
+	status        :: GameStatus,
 	createdAt     :: MyUTCTime } deriving (Show,Generic)
 instance FromJSON CreatedGame
 
-data Status = Status {
+data GameStatus = GameStatus {
 	id   :: Int,
 	name :: String } deriving (Show,Generic)
-instance FromJSON Status
+instance FromJSON GameStatus
 
 data LiURL = LiURL {
 	socket :: String,
@@ -173,11 +170,20 @@ instance FromJSON PossibleMoves where
 
 data LichessMsg d = LichessMsg {
 	t :: String,
-	d :: Maybe d }
-instance (FromJSON d) => FromJSON (LichessMsg d)
+	d :: Maybe d } deriving (Show,Generic)
+instance (ToJSON d) => ToJSON (LichessMsg d)
 
-instance FromJSON Move where
-	parseJSON (Move 
+instance ToJSON Move where
+	toJSON Move{..} = object $ [
+		"from" .= show moveFrom,
+		"to"   .= show moveTo ] ++
+		maybe [] ((:[]) . ("promotion" .=) . toPieceName) movePromote
+		where
+		toPieceName :: Piece -> String
+		toPieceName Ú = "knight"
+		toPieceName Û = "bishop"
+		toPieceName Ü = "rook"
+		toPieceName Ý = "queen"
 
 {-
 export interface MoveOrDrop {

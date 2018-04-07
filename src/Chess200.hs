@@ -104,7 +104,7 @@ data Move =
 		moveTo      :: Coors,
 		moveTakes   :: Maybe Coors,
 		movePromote :: Maybe Piece } |
-	Castling CastlingSide
+	Castling Colour CastlingSide
 	deriving Eq
 data CastlingSide = Queenside | Kingside deriving Eq
 
@@ -115,8 +115,8 @@ instance Show Move where
 		Just Û → "B"
 		Just Ü → "R"
 		Just Ý → "Q"
-	show (Castling Queenside) = "O-O-O"
-	show (Castling Kingside)  = "O-O"
+	show (Castling _ Queenside) = "O-O-O"
+	show (Castling _ Kingside)  = "O-O"
 
 doMove pos@Position{..} move = pos {
 
@@ -127,8 +127,8 @@ doMove pos@Position{..} move = pos {
 			[ (moveFrom,Nothing), (moveTo,case movePromote of
 				Nothing         → pBoard!moveFrom
 				Just promote_to → Just (pColourToMove,promote_to) ) ]
-		Castling Queenside → [ ((1,base),Nothing), ((4,base),pBoard!(1,base)), ((5,base),Nothing), ((3,base),pBoard!(5,base)) ]
-		Castling Kingside  → [ ((8,base),Nothing), ((6,base),pBoard!(8,base)), ((5,base),Nothing), ((7,base),pBoard!(5,base)) ],
+		Castling _ Queenside → [ ((1,base),Nothing), ((4,base),pBoard!(1,base)), ((5,base),Nothing), ((3,base),pBoard!(5,base)) ]
+		Castling _ Kingside  → [ ((8,base),Nothing), ((6,base),pBoard!(8,base)), ((5,base),Nothing), ((7,base),pBoard!(5,base)) ],
 	pColourToMove       = nextColour pColourToMove,
 
 	pHalfmoveClock      = case move of
@@ -153,7 +153,7 @@ doMove pos@Position{..} move = pos {
 	pawn_step = pawnStep pColourToMove
 	base = baseRank pColourToMove
 	(forfeit_queenside,forfeit_kingside) = case move of
-		Castling _                         → (True, True )
+		Castling _  _                      → (True, True )
 		Move (1,rank) _ _ _ | rank == base → (True, False)
 		Move (5,rank) _ _ _ | rank == base → (True, True )
 		Move (8,rank) _ _ _ | rank == base → (False,True )
@@ -161,9 +161,9 @@ doMove pos@Position{..} move = pos {
 
 moveGen pos@Position{..} = filter king_not_in_check $ potentialMoves pos where
 	king_not_in_check move = all (coorsNotInCheck pos_after_move) $ case move of
-		Move{..}           → [ kingsCoors pos_after_move ]
-		Castling Queenside → map (,baseRank pColourToMove) [3..5]
-		Castling Kingside  → map (,baseRank pColourToMove) [5..7]
+		Move{..}             → [ kingsCoors pos_after_move ]
+		Castling _ Queenside → map (,baseRank pColourToMove) [3..5]
+		Castling _ Kingside  → map (,baseRank pColourToMove) [5..7]
 		where
 		pos_after_move = (doMove pos move) { pColourToMove = pColourToMove }
 
@@ -217,8 +217,8 @@ potentialMoves Position{..} = normal_moves ++ castling_moves where
 			Ù | to_rank == baseRank (nextColour pColourToMove) → map Just [Ý,Ú,Û,Ü]
 			_ | otherwise                                      → [ Nothing ] ]
 
-	castling_moves = [ Castling Kingside  | pColourToMove ∈ pCanCastleKingSide,  all square_empty [(6,base),(7,base)] ] ++
-		             [ Castling Queenside | pColourToMove ∈ pCanCastleQueenSide, all square_empty [(4,base),(3,base),(2,base)] ]
+	castling_moves = [ Castling pColourToMove Kingside  | pColourToMove ∈ pCanCastleKingSide,  all square_empty [(6,base),(7,base)] ] ++
+		             [ Castling pColourToMove Queenside | pColourToMove ∈ pCanCastleQueenSide, all square_empty [(4,base),(3,base),(2,base)] ]
 
 	base = baseRank pColourToMove
 	square_empty = isNothing . (pBoard!)

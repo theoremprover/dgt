@@ -8,10 +8,12 @@ import Network.HTTP.Conduit
 import Network.HTTP.Types.Status (Status(..))
 import qualified Data.ByteString.Char8 as BS
 import Data.Aeson.Types (explicitParseField)
-import Control.Monad.IO.Class (liftIO)
+import Control.Monad.IO.Class (liftIO,MonadIO)
 import Data.CaseInsensitive (mk)
 import Data.Char (toLower)
 import Control.Monad.Trans.State
+import Data.Aeson
+import Network.Socket (withSocketsDo)
 
 import Chess200
 import LichessInterface
@@ -52,7 +54,7 @@ lichessRequestL path querystring = do
 	return (getResponseStatus response,val)
 
 withLoginL :: String -> String -> LichessM a -> IO a
-withLoginL username password lichessm = do
+withLoginL username password lichessm = withSocketsDo $ do
 	(response,user::User) <- rawLichessRequest "/login" [("username",Just username),("password",Just password)] []
 	let Status{..} = getResponseStatus response
 	case statusCode == 200 of
@@ -63,7 +65,8 @@ withLoginL username password lichessm = do
 			evalStateT lichessm $ LichessState {
 				lisAuthCookie = BS.unpack cookie_name ++ "=" ++ BS.unpack cookie_value,
 				myColour = White,
-				currentGameID = Nothing }
+				currentGameID = Nothing,
+				socketURL = Nothing }
 
 startGameL :: Maybe Position -> Maybe Colour -> LichessM (Maybe GameData)
 startGameL mb_position mb_colour = do
