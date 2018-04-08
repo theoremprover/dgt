@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings,RecordWildCards #-}
+{-# LANGUAGE OverloadedStrings,RecordWildCards,FlexibleInstances #-}
 {-# OPTIONS_GHC -fno-warn-tabs #-}
 
 module LichessWebsockets where
@@ -14,6 +14,7 @@ import Control.Monad
 import Control.Monad.IO.Class (MonadIO,liftIO)
 import Control.Monad.Trans.State
 import System.Random
+import Data.Aeson
 
 import Chess200
 import Lichess
@@ -41,8 +42,8 @@ inGameL ingamem = do
 	stream <- liftIO $ makeStream
 		(fmap Just (connectionGetChunk connection))
 		(maybe (return ()) (connectionPut connection . BS.toStrict))
-	liftIO $ WS.runClientWithStream stream host baseurl options headers $ \ conn -> do
-		evalStateT ingamem $ InGameState conn
+	conn <- liftIO $ WS.runClientWithStream stream host baseurl options headers return
+	evalStateT ingamem $ InGameState conn
 
 {-
 sendG :: String -> String 
@@ -51,7 +52,15 @@ sendG
 			WS.receiveData conn >>= BS.putStrLn
 -}
 
+instance (FromJSON a,ToJSON a) => WebSocketsData a where
+--	fromDataMessage (Text bs _) = fromLazyByteString bs
+--	fromDataMessage (Binary bs) = fromLazyByteString bs
+	fromLazyByteString bs = case eitherDecode bs of
+		Left errmsg -> error errmsg
+		Right a     -> a
+	toLazyByteString = encode
+
 moveG :: Move -> InGameM ()
 moveG move = do
 	conn <- gets igsConnection
-	WS.sendTextData conn move
+	liftIO $ WS.sendTextData conn move
