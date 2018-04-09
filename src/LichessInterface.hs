@@ -184,6 +184,8 @@ instance ToJSON Move where
 		toPieceName Û = "bishop"
 		toPieceName Ü = "rook"
 		toPieceName Ý = "queen"
+instance FromJSON Move where
+	parse
 
 {-
 export interface MoveOrDrop {

@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings,RecordWildCards,FlexibleInstances #-}
+{-# LANGUAGE OverloadedStrings,RecordWildCards,FlexibleInstances,UndecidableInstances #-}
 {-# OPTIONS_GHC -fno-warn-tabs #-}
 
 module LichessWebsockets where
@@ -53,8 +53,6 @@ sendG
 -}
 
 instance (FromJSON a,ToJSON a) => WebSocketsData a where
---	fromDataMessage (Text bs _) = fromLazyByteString bs
---	fromDataMessage (Binary bs) = fromLazyByteString bs
 	fromLazyByteString bs = case eitherDecode bs of
 		Left errmsg -> error errmsg
 		Right a     -> a
