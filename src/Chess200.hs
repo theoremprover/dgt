@@ -34,7 +34,7 @@ data Position = Position {
 	pColourToMove       :: Colour,
 	pCanCastleQueenSide :: [Colour],
 	pCanCastleKingSide  :: [Colour],
-	pEnPassant          :: Maybe (Coors,Coors),
+	pEnPassantMiddle    :: Maybe Coors,
 	pHalfmoveClock      :: Int,
 	pNextMoveNumber     :: Int }
 
@@ -51,7 +51,7 @@ initialPosition = Position {
 	pColourToMove       = White,
 	pCanCastleQueenSide = allOfThem,
 	pCanCastleKingSide  = allOfThem,
-	pEnPassant          = Nothing,
+	pEnPassantMiddle    = Nothing,
 	pHalfmoveClock      = 0,
 	pNextMoveNumber     = 1 }
 
@@ -138,11 +138,10 @@ doMove pos@Position{..} move = pos {
 
 	pNextMoveNumber     = if pColourToMove==Black then pNextMoveNumber+1 else pNextMoveNumber,
 
-	pEnPassant          = case move of
+	pEnPassantMiddle    = case move of
 		Move from to Nothing Nothing |
 			Just (_,Ù) <- pBoard!from,
-			Just to == addCoors pBoard from (2*pawn_step),
-			Just middle <- addCoors pBoard from pawn_step → Just (middle,to)
+			Just to == addCoors pBoard from (2*pawn_step) → addCoors pBoard from pawn_step
 		_ | otherwise                                     → Nothing,
 
 	pCanCastleQueenSide = (if forfeit_queenside then delete pColourToMove else id) pCanCastleQueenSide,
@@ -205,9 +204,9 @@ potentialMoves Position{..} = normal_moves ++ castling_moves where
 					pawn_takes  = [ (dest,Just take_on) |
 						Just dest <- map (addCoors pBoard src) [pawn_step+east,pawn_step+west],
 						take_on   <- case pBoard!dest of
-							Just (colour,_) | colour ≠ pColourToMove                                 → [ dest ]
-							Nothing         | Just (middle,pawn_coors) <- pEnPassant, middle == dest → [ pawn_coors ]
-							_               | otherwise                                              → [] ]
+							Just (colour,_) | colour ≠ pColourToMove                    → [ dest ]
+							Nothing         | Just middle <- pEnPassantMiddle, middle == dest → [ (fst dest,snd src) ]
+							_               | otherwise                                 → [] ]
 				Ú → concatMap (maybe_move           src) knight_moves
 				Û → concatMap (maybe_move_direction src) diagonals
 				Ü → concatMap (maybe_move_direction src) straights

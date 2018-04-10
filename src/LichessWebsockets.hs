@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings,RecordWildCards,FlexibleInstances,UndecidableInstances #-}
+{-# LANGUAGE UnicodeSyntax,OverloadedStrings,RecordWildCards,FlexibleInstances,UndecidableInstances,IncoherentInstances #-}
 {-# OPTIONS_GHC -fno-warn-tabs #-}
 
 module LichessWebsockets where
@@ -12,7 +12,7 @@ import Network.WebSockets as WS
 import Network.WebSockets.Stream
 import Control.Monad
 import Control.Monad.IO.Class (MonadIO,liftIO)
-import Control.Monad.Trans.State
+import Control.Monad.Trans.State.Strict
 import System.Random
 import Data.Aeson
 
@@ -52,17 +52,17 @@ instance (FromJSON a,ToJSON a) => WebSocketsData a where
 		Right a     -> a
 	toLazyByteString = encode
 
-sendG :: (ToJSON a) => a -> InGameM ()
+sendG :: (WebSocketsData a) => a -> InGameM ()
 sendG a = do
 	conn <- gets igsConnection
 	liftIO $ WS.sendTextData conn a
 
 doMoveG :: Move -> InGameM ()
 doMoveG Move{..} = do
-	sendG $ LiMove moveFrom moveTo $ case movePromote of
+	sendG $ LiMove (show moveFrom) (show moveTo) $ case movePromote of
 		Nothing -> Nothing
-		Just Ú -> "knight"
-		Just Û -> "bishop"
-		Just Ü -> "rook"
-		Just Ý -> "queen"
+		Just Ãš -> Just "knight"
+		Just Ã› -> Just "bishop"
+		Just Ãœ -> Just "rook"
+		Just Ã -> Just "queen"
 

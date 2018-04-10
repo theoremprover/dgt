@@ -31,8 +31,9 @@ main = do
 			Nothing -> liftIO $ putStrLn "Something went wrong."
 			Just gamedata -> do
 				liftIO $ print gamedata
-				moveG (Move (5,2) (5,4) Nothing Nothing)
-				return ()
+				inGameL $ do
+					doMoveG (Move (5,2) (5,4) Nothing Nothing)
+					return ()
 
 main2 = do
 	serialport:args <- getArgs

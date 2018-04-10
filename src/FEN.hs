@@ -1,4 +1,5 @@
 {-# LANGUAGE RecordWildCards,UnicodeSyntax #-}
+{-# OPTIONS_GHC -fno-warn-tabs #-}
 
 module FEN where
 
@@ -8,7 +9,6 @@ import Data.Char
 import Data.Maybe
 import Data.List
 import Control.Monad
---import Text.Printf
 import Data.Array
 
 import Chess200
@@ -21,7 +21,7 @@ toFEN Position{..} =
 	intercalate "/" [ row2fen 0 [ pBoard!(f,r) | f <- [1..8] ] | r <- [8,7..1] ] ++ " " ++
 	(if pColourToMove==White then "w" else "b") ++ " " ++
 	(if castles=="" then "-" else castles) ++ " " ++
-	maybe "-" show pEnPassant ++ " " ++
+	maybe "-" show pEnPassantMiddle ++ " " ++
 	show pHalfmoveClock ++ " " ++ show pNextMoveNumber
 	where
 	castles =
