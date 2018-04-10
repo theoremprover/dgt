@@ -173,6 +173,14 @@ data LichessMsg d = LichessMsg {
 	d :: Maybe d } deriving (Show,Generic)
 instance (ToJSON d) => ToJSON (LichessMsg d)
 
+data LiMove = LiMove {
+	from      :: String,
+	to        :: String,
+	promotion :: Maybe String } deriving (Show,Generic)
+instance FromJSON LiMove
+instance ToJSON LiMove
+
+{-
 instance ToJSON Move where
 	toJSON Move{..} = object $ [
 		"from" .= show moveFrom,
@@ -184,8 +192,7 @@ instance ToJSON Move where
 		toPieceName Û = "bishop"
 		toPieceName Ü = "rook"
 		toPieceName Ý = "queen"
-instance FromJSON Move where
-	parse
+-}
 
 {-
 export interface MoveOrDrop {

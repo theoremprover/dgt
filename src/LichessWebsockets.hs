@@ -43,14 +43,7 @@ inGameL ingamem = do
 		(fmap Just (connectionGetChunk connection))
 		(maybe (return ()) (connectionPut connection . BS.toStrict))
 	conn <- liftIO $ WS.runClientWithStream stream host baseurl options headers return
-	evalStateT ingamem $ InGameState conn
-
-{-
-sendG :: String -> String 
-sendG
-			WS.sendTextData conn ("TESTLINE!" :: BS.ByteString)
-			WS.receiveData conn >>= BS.putStrLn
--}
+	evalStateT ingamem $ InGameState conn 
 
 instance (FromJSON a,ToJSON a) => WebSocketsData a where
 	fromLazyByteString bs = case eitherDecode bs of
@@ -58,7 +51,11 @@ instance (FromJSON a,ToJSON a) => WebSocketsData a where
 		Right a     -> a
 	toLazyByteString = encode
 
-moveG :: Move -> InGameM ()
-moveG move = do
+sendG :: (ToJSON a) => a -> InGameM ()
+sendG a = do
 	conn <- gets igsConnection
-	liftIO $ WS.sendTextData conn move
+	liftIO $ WS.sendTextData conn a
+
+doMoveG :: Move -> InGameM ()
+doMoveG Move{..} = do
+	sendG $ LiMove moveFrom moveTo 

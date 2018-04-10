@@ -23,7 +23,8 @@ data LichessState = LichessState {
 	lisAuthCookie :: String,
 	myColour      :: Colour,
 	currentGameID :: Maybe String,
-	socketURL     :: Maybe String } deriving Show
+	socketURL     :: Maybe String,
+	currentPos    :: Position } deriving Show
 
 type LichessM a = StateT LichessState IO a
 
@@ -70,10 +71,11 @@ withLoginL username password lichessm = withSocketsDo $ do
 
 startGameL :: Maybe Position -> Maybe Colour -> LichessM (Maybe GameData)
 startGameL mb_position mb_colour = do
+	let pos = maybe initialPosition Prelude.id mb_position
 	(Status{..},mb_gamedata) <- lichessRequestL "/setup/ai" [
 		("color",Just $ maybe "random" (map toLower . show) mb_colour),
 		("days",Just "2"),("time",Just "5.0"),
-		("fen",Just "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"),
+		("fen",Just $ toFEN pos), --"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"),
 		("increment",Just "8"),
 		("level",Just "2"),
 		("timeMode",Just "0"),
@@ -84,5 +86,6 @@ startGameL mb_position mb_colour = do
 		Just gamedata -> do
 			modify $ \ s -> s {
 				currentGameID = Just $ LichessInterface.id ((game (gamedata::GameData))::CreatedGame),
-				socketURL     = Just $ socket (url gamedata) }
+				socketURL     = Just $ socket (url gamedata),
+				currentPos    = pos }
 	return mb_gamedata
