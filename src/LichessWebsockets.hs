@@ -17,6 +17,7 @@ import System.Random
 import Data.Aeson
 
 import Chess200
+import FEN
 import Lichess
 import LichessInterface
 
@@ -58,4 +59,10 @@ sendG a = do
 
 doMoveG :: Move -> InGameM ()
 doMoveG Move{..} = do
-	sendG $ LiMove moveFrom moveTo 
+	sendG $ LiMove moveFrom moveTo $ case movePromote of
+		Nothing -> Nothing
+		Just Ú -> "knight"
+		Just Û -> "bishop"
+		Just Ü -> "rook"
+		Just Ý -> "queen"
+

@@ -45,6 +45,7 @@ dependencies:
 - tls
 - connection
 - random
+- parsec
 
 library:
   source-dirs: src
