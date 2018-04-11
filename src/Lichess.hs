@@ -73,6 +73,7 @@ withLoginL username password lichessm = withSocketsDo $ do
 
 startGameL :: Maybe Position -> Maybe Colour -> LichessM (Maybe GameData)
 startGameL mb_position mb_colour = do
+	liftIO $ putStrLn "startGameL..."
 	let pos = maybe initialPosition Prelude.id mb_position
 	(Status{..},mb_gamedata) <- lichessRequestL "/setup/ai" [
 		("color",Just $ maybe "random" (map toLower . show) mb_colour),
