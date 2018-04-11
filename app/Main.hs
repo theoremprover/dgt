@@ -26,6 +26,9 @@ import LichessWebsockets
 main = do
 	pw <- readFile "pw.txt"
 	withLoginL "Threetee" pw $ do
+		mb_gamedata <- joinGameL "UYiXQF3C58un"
+		liftIO $ print mb_gamedata
+{-
 		mb_gamedata <- startGameL Nothing (Just White)
 		case mb_gamedata of
 			Nothing -> liftIO $ putStrLn "Something went wrong."
@@ -34,6 +37,7 @@ main = do
 				inGameL $ do
 					doMoveG (Move (5,2) (5,4) Nothing Nothing)
 					return ()
+-}
 
 main2 = do
 	serialport:args <- getArgs

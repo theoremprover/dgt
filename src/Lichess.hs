@@ -49,11 +49,13 @@ rawLichessRequest path querystring headers = do
 
 lichessRequestL :: (FromJSON val) => String -> [(String,Maybe String)] -> LichessM (Status,val)
 lichessRequestL path querystring = do
-	liftIO $ putStrLn $ "lichessRequestL path=" ++ path
+	liftIO $ putStrLn $ "lichessRequestL path=" ++ show path
 	authcookie <- gets lisAuthCookie
 	(response,val) <- rawLichessRequest path querystring [("Cookie",authcookie)]
+	let status = getResponseStatus response
+	liftIO $ BS.putStrLn $ statusMessage status
 --	liftIO $ BS.putStrLn $ getResponseBody response
-	return (getResponseStatus response,val)
+	return (status,val)
 
 withLoginL :: String -> String -> LichessM a -> IO a
 withLoginL username password lichessm = withSocketsDo $ do
@@ -83,7 +85,6 @@ startGameL mb_position mb_colour = do
 		("level",Just "2"),
 		("timeMode",Just "0"),
 		("variant",Just "1") ]
-	liftIO $ BS.putStrLn statusMessage
 	case mb_gamedata of
 		Nothing -> return ()
 		Just gamedata -> do
@@ -92,3 +93,9 @@ startGameL mb_position mb_colour = do
 				socketURL     = Just $ socket (url gamedata),
 				currentPos    = Just pos }
 	return mb_gamedata
+
+joinGameL :: String -> LichessM (Maybe Value)
+joinGameL gameid = do
+	liftIO $ putStrLn "joinGameL..."
+	(Status{..},mb_val) <- lichessRequestL ("/game/"++gameid) []
+	return mb_val

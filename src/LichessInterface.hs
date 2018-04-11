@@ -3,6 +3,7 @@
 
 {-
 https://github.com/ornicar/lila/blob/master/doc/mobile/play.md
+https://github.com/veloce/lichobile/tree/master/src
 -}
 
 module LichessInterface where

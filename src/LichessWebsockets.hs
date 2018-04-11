@@ -31,7 +31,8 @@ inGameL ingamem = do
 	clientID <- forM [1..10] $ \ _ -> liftIO $ getStdRandom (randomR ('a','z'))
 	Just socketurl <- gets socketURL
 	let baseurl = socketurl ++ "?sri=" ++ clientID ++ "&version=" ++ socketVersion
-	let (host,port,options,headers) = ("socket.lichess.org",9021,defaultConnectionOptions,[]) 
+	liftIO $ putStrLn baseurl
+	let (host,port,options,headers) = ("socket.lichess.org",9021,defaultConnectionOptions,[])
 	context <- liftIO $ initConnectionContext
 	connection <- liftIO $ connectTo context $ ConnectionParams {
 		connectionHostname = host, connectionPort = port,
@@ -47,10 +48,8 @@ inGameL ingamem = do
 	evalStateT ingamem $ InGameState conn 
 
 instance (FromJSON a,ToJSON a) => WebSocketsData a where
-	fromLazyByteString bs = case eitherDecode bs of
-		Left errmsg -> error errmsg
-		Right a     -> a
-	toLazyByteString = encode
+	fromLazyByteString = either error Prelude.id . eitherDecode
+	toLazyByteString   = encode
 
 sendG :: (WebSocketsData a) => a -> InGameM ()
 sendG a = do
