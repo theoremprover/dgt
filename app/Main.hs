@@ -26,7 +26,7 @@ import LichessWebsockets
 main = do
 	pw <- readFile "pw.txt"
 	withLoginL "Threetee" pw $ do
-		mb_gamedata <- joinGameL "UYiXQF3C58un"
+		mb_gamedata <- joinGameL "5Kbx2Osc6dqX"
 		liftIO $ print mb_gamedata
 {-
 		mb_gamedata <- startGameL Nothing (Just White)
