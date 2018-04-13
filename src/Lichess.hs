@@ -7,7 +7,8 @@ import Network.HTTP.Simple
 import Network.HTTP.Conduit
 import Network.HTTP.Types.Status (Status(..))
 import qualified Data.ByteString.Char8 as BS
---import qualified Data.ByteString.Lazy as BS
+import qualified Data.ByteString.Lazy as BSL
+import Network.Connection
 import Network.WebSockets as WS
 import Network.WebSockets.Stream
 import Data.Aeson.Types (explicitParseField)
@@ -22,6 +23,7 @@ import Network.Socket (withSocketsDo)
 import System.Random
 import Wuss
 import Network.TLS
+import Data.Maybe
 
 import Chess200
 import LichessInterface
@@ -38,7 +40,7 @@ data LichessState = LichessState {
 
 type LichessM a = StateT LichessState IO a
 
-rawLichessRequest :: (FromJSON val,MonadIO m) => String -> String -> [(String,Maybe String)] -> [(String,String)] -> m (Response BS.ByteString,val)
+rawLichessRequest :: (FromJSON val,MonadIO m) => BS.ByteString -> String -> [(String,Maybe String)] -> [(String,String)] -> m (Network.HTTP.Conduit.Response BS.ByteString,val)
 rawLichessRequest host path querystring headers = do
 	response <- liftIO $ httpBS $
 		setRequestMethod "POST" $
@@ -56,11 +58,12 @@ rawLichessRequest host path querystring headers = do
 			error $ "rawLichessRequest eitherDecodeStrict: " ++ errmsg
 		Right val -> return (response,val)
 
-lichessRequestL :: (FromJSON val) => String -> String -> [(String,Maybe String)] -> LichessM (Status,val)
-lichessRequestL host path querystring = do
+lichessRequestL :: (FromJSON val) => BS.ByteString -> String -> [(String,Maybe String)] -> [(String,String)] -> LichessM (Status,val)
+lichessRequestL host path querystring headers = do
 	liftIO $ putStrLn $ "lichessRequestL path=" ++ show path
 	authcookie <- gets lisAuthCookie
-	(response,val) <- rawLichessRequest host path querystring [("Cookie",authcookie)]
+	liftIO $ putStrLn $ "authcookie=" ++ authcookie
+	(response,val) <- rawLichessRequest host path querystring (("Cookie",authcookie):headers)
 	let status = getResponseStatus response
 	liftIO $ BS.putStrLn $ statusMessage status
 --	liftIO $ BS.putStrLn $ getResponseBody response
@@ -95,7 +98,7 @@ startGameL mb_position mb_colour = do
 		("increment",Just "8"),
 		("level",Just "2"),
 		("timeMode",Just "0"),
-		("variant",Just "1") ]
+		("variant",Just "1") ] []
 	case mb_gamedata of
 		Nothing -> return ()
 		Just gamedata -> do
@@ -105,11 +108,13 @@ startGameL mb_position mb_colour = do
 				currentPos    = Just pos }
 	return mb_gamedata
 
-joinGameL :: String -> LichessM (Maybe Value)
+joinGameL :: String -> LichessM Status
 joinGameL gameid = do
 	liftIO $ putStrLn "joinGameL..."
-	(Status{..},mb_val) <- lichessRequestL "socket.lichess.org" ("/"++gameid++"/socket/v2") []
-	return mb_val
+	LichessState{..} <- get
+	(status@Status{..},NoResponse) <- lichessRequestL "socket.lichess.org" ("/"++gameid++"/socket/v2") [("sri",Just clientID)]
+		[("Connection","keep-alive, Upgrade"),("Upgrade","websocket"),("Sec-WebSocket-Key","/iFN3lHpwu17q1WsvRxRzw==")]
+	return status
 
 type InGameM a = StateT InGameState (StateT LichessState IO) a
 
@@ -119,7 +124,7 @@ data InGameState = InGameState {
 inGameL :: InGameM a -> LichessM a
 inGameL ingamem = do
 	LichessState{..} <- get
-	let baseurl = socketurl ++ "?sri=" ++ clientID ++ "&version=" ++ socketVersion
+	let baseurl = fromJust socketURL ++ "?sri=" ++ clientID ++ "&version=" ++ socketVersion
 	liftIO $ putStrLn baseurl
 	let (host,port,options,headers) = ("socket.lichess.org",9021,defaultConnectionOptions,[])
 	context <- liftIO $ initConnectionContext
@@ -132,7 +137,7 @@ inGameL ingamem = do
 		connectionUseSocks = Nothing }
 	stream <- liftIO $ makeStream
 		(fmap Just (connectionGetChunk connection))
-		(maybe (return ()) (connectionPut connection . BS.toStrict))
+		(maybe (return ()) (connectionPut connection . BSL.toStrict))
 	conn <- liftIO $ WS.runClientWithStream stream host baseurl options headers return
 	evalStateT ingamem $ InGameState conn 
 

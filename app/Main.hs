@@ -21,12 +21,11 @@ import Control.Monad.Loops
 import DGTSerial
 import Chess200
 import Lichess
-import LichessWebsockets
 
 main = do
 	pw <- readFile "pw.txt"
 	withLoginL "Threetee" pw $ do
-		mb_gamedata <- joinGameL "5Kbx2Osc6dqX"
+		mb_gamedata <- joinGameL "oSVcq5ZoLcdI"
 		liftIO $ print mb_gamedata
 {-
 		mb_gamedata <- startGameL Nothing (Just White)

@@ -23,6 +23,11 @@ import Chess200
 
 socketVersion = "3"
 
+data NoResponse = NoResponse deriving (Show)
+instance FromJSON NoResponse where
+	parseJSON _ = pure NoResponse
+
+
 data Profile = Profile {
 	country   :: Maybe String,
 	firstName :: Maybe String } deriving (Show,Generic)
