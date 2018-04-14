@@ -25,8 +25,9 @@ import Lichess
 main = do
 	pw <- readFile "pw.txt"
 	withLoginL "Threetee" pw $ do
-		mb_gamedata <- joinGameL "oSVcq5ZoLcdI"
-		liftIO $ print mb_gamedata
+		inGameL "LVh2Xc94" $ do
+			doMoveG $ Move (4,2) (4,3) Nothing Nothing
+
 {-
 		mb_gamedata <- startGameL Nothing (Just White)
 		case mb_gamedata of

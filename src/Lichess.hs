@@ -34,8 +34,8 @@ data LichessState = LichessState {
 	clientID      :: String,
 	lisAuthCookie :: String,
 	myColour      :: Colour,
-	currentGameID :: Maybe String,
 	socketURL     :: Maybe String,
+	currentGameID :: Maybe String,
 	currentPos    :: Maybe Position } deriving Show
 
 type LichessM a = StateT LichessState IO a
@@ -66,7 +66,7 @@ lichessRequestL host path querystring headers = do
 	(response,val) <- rawLichessRequest host path querystring (("Cookie",authcookie):headers)
 	let status = getResponseStatus response
 	liftIO $ BS.putStrLn $ statusMessage status
---	liftIO $ BS.putStrLn $ getResponseBody response
+	liftIO $ BS.putStrLn $ getResponseBody response
 	return (status,val)
 
 withLoginL :: String -> String -> LichessM a -> IO a
@@ -83,8 +83,8 @@ withLoginL username password lichessm = withSocketsDo $ do
 				clientID      = clientid,
 				lisAuthCookie = BS.unpack cookie_name ++ "=" ++ BS.unpack cookie_value,
 				myColour      = White,
-				currentGameID = Nothing,
 				socketURL     = Nothing,
+				currentGameID = Nothing,
 				currentPos    = Nothing }
 
 startGameL :: Maybe Position -> Maybe Colour -> LichessM (Maybe GameData)
@@ -108,13 +108,13 @@ startGameL mb_position mb_colour = do
 				currentPos    = Just pos }
 	return mb_gamedata
 
-joinGameL :: String -> LichessM Status
-joinGameL gameid = do
-	liftIO $ putStrLn "joinGameL..."
-	LichessState{..} <- get
-	(status@Status{..},NoResponse) <- lichessRequestL "socket.lichess.org" ("/"++gameid++"/socket/v2") [("sri",Just clientID)]
-		[("Connection","keep-alive, Upgrade"),("Upgrade","websocket"),("Sec-WebSocket-Key","/iFN3lHpwu17q1WsvRxRzw==")]
-	return status
+joinGameL :: String -> InGameL a -> LichessM a
+joinGameL gameid ingamel = do
+	liftIO $ putStrLn $ "joinGameL gameid=" ++ gameid
+--	LichessState{..} <- get
+	(status@Status{..},gamedata::GameData) <- lichessRequestL "https://lichess.org" ("/api/game/"++gameid) "" []
+	modify $ \ s -> s { 
+	inGameL ingamel
 
 type InGameM a = StateT InGameState (StateT LichessState IO) a
 
@@ -124,8 +124,9 @@ data InGameState = InGameState {
 inGameL :: InGameM a -> LichessM a
 inGameL ingamem = do
 	LichessState{..} <- get
-	let baseurl = fromJust socketURL ++ "?sri=" ++ clientID ++ "&version=" ++ socketVersion
-	liftIO $ putStrLn baseurl
+	liftIO $ putStrLn $ "inGameL..."		
+	let path = fromJust socketURL ++ "?sri=" ++ clientID ++ "&version=" ++ socketVersion
+	liftIO $ putStrLn $ "path=" ++ path
 	let (host,port,options,headers) = ("socket.lichess.org",9021,defaultConnectionOptions,[])
 	context <- liftIO $ initConnectionContext
 	connection <- liftIO $ connectTo context $ ConnectionParams {
@@ -138,7 +139,7 @@ inGameL ingamem = do
 	stream <- liftIO $ makeStream
 		(fmap Just (connectionGetChunk connection))
 		(maybe (return ()) (connectionPut connection . BSL.toStrict))
-	conn <- liftIO $ WS.runClientWithStream stream host baseurl options headers return
+	conn <- liftIO $ WS.runClientWithStream stream host path options headers return
 	evalStateT ingamem $ InGameState conn 
 
 instance (FromJSON a,ToJSON a) => WebSocketsData a where
