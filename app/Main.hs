@@ -25,7 +25,7 @@ import Lichess
 main = do
 	pw <- readFile "pw.txt"
 	withLoginL "Threetee" pw $ do
-		inGameL "LVh2Xc94" $ do
+		joinGameL "LVh2Xc94" $ do
 			doMoveG $ Move (4,2) (4,3) Nothing Nothing
 
 {-

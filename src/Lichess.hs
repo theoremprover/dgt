@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings,RecordWildCards,ScopedTypeVariables,DuplicateRecordFields,UnicodeSyntax,FlexibleInstances,UndecidableInstances,IncoherentInstances #-}
+{-# LANGUAGE OverloadedStrings,RecordWildCards,LambdaCase,ScopedTypeVariables,DuplicateRecordFields,UnicodeSyntax,FlexibleInstances,UndecidableInstances,IncoherentInstances #-}
 {-# OPTIONS_GHC -fno-warn-tabs #-}
 
 module Lichess where
@@ -24,6 +24,7 @@ import System.Random
 import Wuss
 import Network.TLS
 import Data.Maybe
+import qualified Control.Exception as E
 
 import Chess200
 import LichessInterface
@@ -40,17 +41,19 @@ data LichessState = LichessState {
 
 type LichessM a = StateT LichessState IO a
 
-rawLichessRequest :: (FromJSON val,MonadIO m) => BS.ByteString -> String -> [(String,Maybe String)] -> [(String,String)] -> m (Network.HTTP.Conduit.Response BS.ByteString,val)
-rawLichessRequest host path querystring headers = do
-	response <- liftIO $ httpBS $
-		setRequestMethod "POST" $
+rawLichessRequest :: (FromJSON val,MonadIO m) => BS.ByteString -> BS.ByteString -> String -> [(String,Maybe String)] -> [(String,String)] -> m (Network.HTTP.Conduit.Response BS.ByteString,val)
+rawLichessRequest method host path querystring headers = do
+	response <- (liftIO $ httpBS $
+		setRequestMethod method $
 		setRequestPath (BS.pack path) $
 		setRequestQueryString (map (\(a,b) -> (BS.pack a,fmap BS.pack b)) querystring) $
 		setRequestSecure True $
 		setRequestPort 443 $
 		setRequestHeaders ([("Accept","application/vnd.lichess.v3+json")] ++ map (\(a,b) -> (mk (BS.pack a),BS.pack b)) headers) $
 		setRequestHost host $
-		defaultRequest	
+		defaultRequest) `E.catch` \case
+			HttpExceptionRequest _ excontent -> error (show excontent)
+			ex -> error $ show ex
 	let bs = getResponseBody response
 	case eitherDecodeStrict bs of
 		Left errmsg -> do
@@ -58,12 +61,12 @@ rawLichessRequest host path querystring headers = do
 			error $ "rawLichessRequest eitherDecodeStrict: " ++ errmsg
 		Right val -> return (response,val)
 
-lichessRequestL :: (FromJSON val) => BS.ByteString -> String -> [(String,Maybe String)] -> [(String,String)] -> LichessM (Status,val)
-lichessRequestL host path querystring headers = do
+lichessRequestL :: (FromJSON val) => BS.ByteString -> BS.ByteString -> String -> [(String,Maybe String)] -> [(String,String)] -> LichessM (Status,val)
+lichessRequestL method host path querystring headers = do
 	liftIO $ putStrLn $ "lichessRequestL path=" ++ show path
 	authcookie <- gets lisAuthCookie
 	liftIO $ putStrLn $ "authcookie=" ++ authcookie
-	(response,val) <- rawLichessRequest host path querystring (("Cookie",authcookie):headers)
+	(response,val) <- rawLichessRequest method host path querystring (("Cookie",authcookie):headers)
 	let status = getResponseStatus response
 	liftIO $ BS.putStrLn $ statusMessage status
 	liftIO $ BS.putStrLn $ getResponseBody response
@@ -71,7 +74,7 @@ lichessRequestL host path querystring headers = do
 
 withLoginL :: String -> String -> LichessM a -> IO a
 withLoginL username password lichessm = withSocketsDo $ do
-	(response,user::User) <- rawLichessRequest "lichess.org" "/login" [("username",Just username),("password",Just password)] []
+	(response,user::User) <- rawLichessRequest "POST" "lichess.org" "/login" [("username",Just username),("password",Just password)] []
 	let Status{..} = getResponseStatus response
 	case statusCode == 200 of
 		False -> error $ "withLoginL: " ++ BS.unpack statusMessage
@@ -91,7 +94,7 @@ startGameL :: Maybe Position -> Maybe Colour -> LichessM (Maybe GameData)
 startGameL mb_position mb_colour = do
 	liftIO $ putStrLn "startGameL..."
 	let pos = maybe initialPosition Prelude.id mb_position
-	(Status{..},mb_gamedata) <- lichessRequestL "lichess.org" "/setup/ai" [
+	(Status{..},mb_gamedata) <- lichessRequestL "POST" "lichess.org" "/setup/ai" [
 		("color",Just $ maybe "random" (map toLower . show) mb_colour),
 		("days",Just "2"),("time",Just "5.0"),
 		("fen",Just $ toFEN pos),
@@ -108,12 +111,12 @@ startGameL mb_position mb_colour = do
 				currentPos    = Just pos }
 	return mb_gamedata
 
-joinGameL :: String -> InGameL a -> LichessM a
+joinGameL :: String -> InGameM a -> LichessM a
 joinGameL gameid ingamel = do
 	liftIO $ putStrLn $ "joinGameL gameid=" ++ gameid
 --	LichessState{..} <- get
-	(status@Status{..},gamedata::GameData) <- lichessRequestL "https://lichess.org" ("/api/game/"++gameid) "" []
-	modify $ \ s -> s { 
+	(status@Status{..},gamedata::GameData) <- lichessRequestL "GET" "https://lichess.org" ("/api/game/"++gameid) [] []
+--	modify $ \ s -> s { 
 	inGameL ingamel
 
 type InGameM a = StateT InGameState (StateT LichessState IO) a
