@@ -21,7 +21,7 @@ import Data.Time.Clock.POSIX
 import Chess200
 
 
-socketVersion = "3"
+socketVersion = "2"
 
 data NoResponse = NoResponse deriving (Show)
 instance FromJSON NoResponse where
@@ -81,12 +81,14 @@ instance FromJSON Variant
 data Player = Player {
 	id          :: Maybe String,
 	username    :: Maybe String,
+	name        :: Maybe String,
 	ai          :: Maybe Int,
 	color       :: Maybe Colour,
 	user        :: Maybe User,
 	rating      :: Maybe Int,
 	provisional :: Maybe Bool,
-	version     :: Maybe Int } deriving (Show,Generic)
+	version     :: Maybe Int,
+	spectator   :: Maybe Bool } deriving (Show,Generic)
 instance FromJSON Player
 
 data Game = Game {
@@ -124,8 +126,18 @@ data CreatedGame = CreatedGame {
 	startedAtTurn :: Depth,
 	source        :: String,
 	status        :: GameStatus,
-	createdAt     :: MyUTCTime } deriving (Show,Generic)
+	createdAt     :: MyUTCTime,
+	winner        :: Maybe String,
+	lastMove      :: Maybe String,
+	opening       :: Maybe Opening
+	} deriving (Show,Generic)
 instance FromJSON CreatedGame
+
+data Opening = Opening {
+	eco  :: String,
+	name :: String,
+	ply  :: Int } deriving (Show,Generic)
+instance FromJSON Opening
 
 data GameStatus = GameStatus {
 	id   :: Int,
@@ -139,17 +151,17 @@ instance FromJSON LiURL
 
 data Pref = Pref {
 	animationDuration :: Int,
-	coords       :: Int,
-	replay       :: Int,
-	autoQueen    :: Int,
-	clockTenths  :: Int,
-	moveEvent    :: Int,
-	clockBar     :: Bool,
-	clockSound   :: Bool,
-	rookCastle   :: Bool,
-	highlight    :: Bool,
-	destination  :: Bool,
-	showCaptured :: Bool } deriving (Show,Generic)
+	coords            :: Int,
+	replay            :: Int,
+	autoQueen         :: Maybe Int,
+	clockTenths       :: Int,
+	moveEvent         :: Maybe Int,
+	clockBar          :: Bool,
+	clockSound        :: Maybe Bool,
+	rookCastle        :: Bool,
+	highlight         :: Bool,
+	destination       :: Bool,
+	showCaptured      :: Bool } deriving (Show,Generic)
 instance FromJSON Pref
 
 data GameStep = GameStep {
@@ -160,14 +172,19 @@ data GameStep = GameStep {
 instance FromJSON GameStep
 
 data GameData = GameData {
-	game          :: CreatedGame,
-	player        :: Player,
-	opponent      :: Player,
-	url           :: LiURL,
-	pref          :: Pref,
-	takebackable  :: Bool,
-	possibleMoves :: PossibleMoves,
-	steps         :: [GameStep] } deriving (Show,Generic)
+	game           :: CreatedGame,
+	clock          :: Maybe String,
+	correspondence :: Maybe String,
+	player         :: Player,
+	opponent       :: Player,
+	orientation    :: Maybe String,
+	url            :: LiURL,
+	pref           :: Pref,
+	evalPut        :: Maybe Bool,
+	takebackable   :: Maybe Bool,
+	possibleMoves  :: Maybe PossibleMoves,
+	steps          :: [GameStep],
+	chat           :: Maybe [String] } deriving (Show,Generic)
 instance FromJSON GameData
 
 data PossibleMoves = PossibleMoves [(String,String)] deriving Show
@@ -178,72 +195,9 @@ data LichessMsg d = LichessMsg {
 	t :: String,
 	d :: Maybe d } deriving (Show,Generic)
 instance (ToJSON d) => ToJSON (LichessMsg d)
+instance (FromJSON d) => FromJSON (LichessMsg d)
 
 data LiMove = LiMove {
-	from      :: String,
-	to        :: String,
-	promotion :: Maybe String } deriving (Show,Generic)
+	u :: String } deriving (Show,Generic)
 instance FromJSON LiMove
 instance ToJSON LiMove
-
-{-
-instance ToJSON Move where
-	toJSON Move{..} = object $ [
-		"from" .= show moveFrom,
-		"to"   .= show moveTo ] ++
-		maybe [] ((:[]) . ("promotion" .=) . toPieceName) movePromote
-		where
-		toPieceName :: Piece -> String
-		toPieceName Ú = "knight"
-		toPieceName Û = "bishop"
-		toPieceName Ü = "rook"
-		toPieceName Ý = "queen"
--}
-
-{-
-export interface MoveOrDrop {
-  readonly fen: string
-  readonly threefold: boolean
-  readonly check: boolean
-  readonly ply: number
-  readonly wDraw: boolean
-  readonly bDraw: boolean
-  readonly uci: string
-  readonly san: string
-  readonly dests: StringMap
-  readonly status?: GameStatus
-  readonly winner?: Color
-  readonly crazyhouse?: {
-    readonly pockets: Pockets
-  }
-  clock?: {
-    readonly white: number
-    readonly black: number
-    readonly lag?: number
-  }
-  readonly promotion?: {
-    readonly key: Key
-    readonly pieceClass: Role
-  }
-  readonly enpassant?: {
-    readonly key: Key
-    readonly color: Color
-  }
-  readonly drops?: Array<string>
-  readonly castle?: {
-    readonly king: KeyPair
-    readonly rook: KeyPair
-    readonly color: Color
-  }
-}
-
-export interface Move extends MoveOrDrop {
-  isMove: boolean
-}
-
-----------------------
-
-
-
--}
-

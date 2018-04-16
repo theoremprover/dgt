@@ -43,7 +43,7 @@ type LichessM a = StateT LichessState IO a
 
 rawLichessRequest :: (FromJSON val,MonadIO m) => BS.ByteString -> BS.ByteString -> String -> [(String,Maybe String)] -> [(String,String)] -> m (Network.HTTP.Conduit.Response BS.ByteString,val)
 rawLichessRequest method host path querystring headers = do
-	response <- (liftIO $ httpBS $
+	response <- liftIO ( ( httpBS $
 		setRequestMethod method $
 		setRequestPath (BS.pack path) $
 		setRequestQueryString (map (\(a,b) -> (BS.pack a,fmap BS.pack b)) querystring) $
@@ -51,9 +51,9 @@ rawLichessRequest method host path querystring headers = do
 		setRequestPort 443 $
 		setRequestHeaders ([("Accept","application/vnd.lichess.v3+json")] ++ map (\(a,b) -> (mk (BS.pack a),BS.pack b)) headers) $
 		setRequestHost host $
-		defaultRequest) `E.catch` \case
-			HttpExceptionRequest _ excontent -> error (show excontent)
-			ex -> error $ show ex
+		defaultRequest ) `E.catch` \case
+			ex@(HttpExceptionRequest _ excontent) -> error ("XXX:" ++ show ex)
+			ex -> error $ show ex )
 	let bs = getResponseBody response
 	case eitherDecodeStrict bs of
 		Left errmsg -> do
@@ -90,11 +90,11 @@ withLoginL username password lichessm = withSocketsDo $ do
 				currentGameID = Nothing,
 				currentPos    = Nothing }
 
-startGameL :: Maybe Position -> Maybe Colour -> LichessM (Maybe GameData)
-startGameL mb_position mb_colour = do
+startGameL :: Maybe Position -> Maybe Colour -> InGameM a -> LichessM a
+startGameL mb_position mb_colour ingamem = do
 	liftIO $ putStrLn "startGameL..."
 	let pos = maybe initialPosition Prelude.id mb_position
-	(Status{..},mb_gamedata) <- lichessRequestL "POST" "lichess.org" "/setup/ai" [
+	(Status{..},gamedata) <- lichessRequestL "POST" "lichess.org" "/setup/ai" [
 		("color",Just $ maybe "random" (map toLower . show) mb_colour),
 		("days",Just "2"),("time",Just "5.0"),
 		("fen",Just $ toFEN pos),
@@ -102,38 +102,39 @@ startGameL mb_position mb_colour = do
 		("level",Just "2"),
 		("timeMode",Just "0"),
 		("variant",Just "1") ] []
-	case mb_gamedata of
-		Nothing -> return ()
-		Just gamedata -> do
-			modify $ \ s -> s {
-				currentGameID = Just $ LichessInterface.id ((game (gamedata::GameData))::CreatedGame),
-				socketURL     = Just $ socket (url gamedata),
-				currentPos    = Just pos }
-	return mb_gamedata
+	inGameL gamedata ingamem
 
 joinGameL :: String -> InGameM a -> LichessM a
-joinGameL gameid ingamel = do
+joinGameL gameid ingamem = do
 	liftIO $ putStrLn $ "joinGameL gameid=" ++ gameid
---	LichessState{..} <- get
-	(status@Status{..},gamedata::GameData) <- lichessRequestL "GET" "https://lichess.org" ("/api/game/"++gameid) [] []
---	modify $ \ s -> s { 
-	inGameL ingamel
+	(status@Status{..},gamedata) <- lichessRequestL "GET" "lichess.org" ("/"++gameid) [] []
+	inGameL gamedata ingamem
 
 type InGameM a = StateT InGameState (StateT LichessState IO) a
 
 data InGameState = InGameState {
 	igsConnection :: WS.Connection }
 
-inGameL :: InGameM a -> LichessM a
-inGameL ingamem = do
+inGameL :: GameData -> InGameM a -> LichessM a
+inGameL gamedata ingamem = do
+	let cur_game = game (gamedata::GameData)
+	let Right pos = fromFEN $ fen (cur_game::CreatedGame)
+	modify $ \ s -> s {
+		currentGameID = Just $ LichessInterface.id (cur_game::CreatedGame),
+		socketURL     = Just $ socket (url gamedata),
+		currentPos    = Just $ pos }
 	LichessState{..} <- get
 	liftIO $ putStrLn $ "inGameL..."		
-	let path = fromJust socketURL ++ "?sri=" ++ clientID ++ "&version=" ++ socketVersion
+	let path = fromJust socketURL ++ "?sri=" ++ clientID
 	liftIO $ putStrLn $ "path=" ++ path
-	let (host,port,options,headers) = ("socket.lichess.org",9021,defaultConnectionOptions,[])
+	LichessState{..} <- get
+	let
+		(host,port,options) = ("socket.lichess.org",9021,defaultConnectionOptions)
+		headers = [ ("Cookie",BS.pack lisAuthCookie) ]
 	context <- liftIO $ initConnectionContext
 	connection <- liftIO $ connectTo context $ ConnectionParams {
-		connectionHostname = host, connectionPort = port,
+		connectionHostname = host,
+		connectionPort = port,
 		connectionUseSecure = Just $ TLSSettingsSimple {
 			settingDisableCertificateValidation = True,
 			settingDisableSession = False,
@@ -149,16 +150,17 @@ instance (FromJSON a,ToJSON a) => WebSocketsData a where
 	fromLazyByteString = either error Prelude.id . eitherDecode
 	toLazyByteString   = encode
 
-sendG :: (WebSocketsData a) => a -> InGameM ()
+sendG :: (ToJSON a,WebSocketsData a) => a -> InGameM ()
 sendG a = do
+	liftIO $ putStrLn $ "sendG " ++ show (toJSON a)
 	conn <- gets igsConnection
 	liftIO $ WS.sendTextData conn a
 
 doMoveG :: Move -> InGameM ()
 doMoveG Move{..} = do
-	sendG $ LiMove (show moveFrom) (show moveTo) $ case movePromote of
-		Nothing -> Nothing
-		Just Ú -> Just "knight"
-		Just Û -> Just "bishop"
-		Just Ü -> Just "rook"
-		Just Ý -> Just "queen"
+	sendG $ LichessMsg "move" $ Just $ LiMove $ show moveFrom ++ show moveTo ++ case movePromote of
+		Nothing -> ""
+		Just Ú -> "n"
+		Just Û -> "b"
+		Just Ü -> "r"
+		Just Ý -> "q"
