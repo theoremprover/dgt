@@ -21,11 +21,14 @@ import Control.Monad.Loops
 import DGTSerial
 import Chess200
 import Lichess
+import LichessInterface
 
 main = do
 	pw <- readFile "pw.txt"
-	withLoginL "Threetee" pw $ do
-		joinGameL "eOLIem47" $ do
+	withLoginL "Threetee" pw $ \ user -> do
+		( case nowPlaying (user::User) of
+			Just (game:_) -> joinGameL (gameId game)
+			_             -> startGameL Nothing (Just White) ) $ do
 			doMoveG $ Move (1,2) (1,3) Nothing Nothing
 
 {-

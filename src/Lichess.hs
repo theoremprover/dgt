@@ -72,7 +72,7 @@ lichessRequestL method host path querystring headers = do
 	liftIO $ BS.putStrLn $ getResponseBody response
 	return (status,val)
 
-withLoginL :: String -> String -> LichessM a -> IO a
+withLoginL :: String -> String -> (User -> LichessM a) -> IO a
 withLoginL username password lichessm = withSocketsDo $ do
 	(response,user::User) <- rawLichessRequest "POST" "lichess.org" "/login" [("username",Just username),("password",Just password)] []
 	let Status{..} = getResponseStatus response
@@ -82,7 +82,7 @@ withLoginL username password lichessm = withSocketsDo $ do
 			liftIO $ putStrLn "OK, logged in."
 			let [Cookie{..}] = destroyCookieJar $ responseCookieJar response
 			clientid <- forM [1..10] $ \ _ -> liftIO $ getStdRandom (randomR ('a','z'))
-			evalStateT lichessm $ LichessState {
+			evalStateT (lichessm user) $ LichessState {
 				clientID      = clientid,
 				lisAuthCookie = BS.unpack cookie_name ++ "=" ++ BS.unpack cookie_value,
 				myColour      = White,
