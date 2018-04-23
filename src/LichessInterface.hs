@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings,DuplicateRecordFields,DeriveGeneric,RecordWildCards #-}
+{-# LANGUAGE OverloadedStrings,DuplicateRecordFields,DeriveGeneric,RecordWildCards,FlexibleInstances,UndecidableInstances #-}
 {-# OPTIONS_GHC -fno-warn-tabs #-}
 
 {-
@@ -14,7 +14,7 @@ import qualified Data.HashMap.Strict as HM
 import qualified Data.Text as T
 import Control.Monad
 import GHC.Generics
-
+import Network.WebSockets
 import Data.Time.Clock
 import Data.Time.Clock.POSIX
 
@@ -191,13 +191,23 @@ data PossibleMoves = PossibleMoves [(String,String)] deriving Show
 instance FromJSON PossibleMoves where
 	parseJSON = withObject "PossibleMoves" $ \ v -> PossibleMoves <$> parseObjectToAssocList v
 
+data SimpleVersionMsg = SimpleVersionMsg {
+	t :: String,
+	v :: Int } deriving (Show,Generic)
+instance ToJSON   SimpleVersionMsg
+instance FromJSON SimpleVersionMsg
+
 data LichessMsg d = LichessMsg {
 	t :: String,
 	d :: Maybe d } deriving (Show,Generic)
-instance (ToJSON d) => ToJSON (LichessMsg d)
+instance (ToJSON   d) => ToJSON   (LichessMsg d)
 instance (FromJSON d) => FromJSON (LichessMsg d)
 
 data LiMove = LiMove {
 	u :: String } deriving (Show,Generic)
 instance FromJSON LiMove
 instance ToJSON LiMove
+
+instance (FromJSON a,ToJSON a) => WebSocketsData a where
+	fromLazyByteString = either error Prelude.id . eitherDecode
+	toLazyByteString   = encode

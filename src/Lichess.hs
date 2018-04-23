@@ -17,7 +17,6 @@ import Control.Monad.IO.Class (MonadIO,liftIO)
 import Control.Monad.Trans.State.Strict
 import Data.CaseInsensitive (mk)
 import Data.Char (toLower)
-import Control.Monad.Trans.State.Strict
 import Data.Aeson
 import Network.Socket (withSocketsDo)
 import System.Random
@@ -25,6 +24,8 @@ import Wuss
 import Network.TLS
 import Data.Maybe
 import qualified Control.Exception as E
+import Control.Concurrent.Lifted as L
+import Control.Exception
 
 import Chess200
 import LichessInterface
@@ -144,11 +145,21 @@ inGameL gamedata ingamem = do
 		(fmap Just (connectionGetChunk connection))
 		(maybe (return ()) (connectionPut connection . BSL.toStrict))
 	conn <- liftIO $ WS.runClientWithStream stream host path options headers return
-	evalStateT ingamem $ InGameState conn 
+	flip evalStateT (InGameState conn) $ do
+		L.fork $ ( forever $ do
+			pingG
+			L.threadDelay 1500 )
+			`catch` ( \ e -> case fromException e of
+				Just async -> do
+					threadid <- L.myThreadId
+					L.throwTo threadid (async :: AsyncException)
+				Nothing    -> return () )
+		ingamem
 
-instance (FromJSON a,ToJSON a) => WebSocketsData a where
-	fromLazyByteString = either error Prelude.id . eitherDecode
-	toLazyByteString   = encode
+pingG :: InGameM ()
+pingG = do
+	liftIO $ putStrLn "Ping"
+	sendG $ SimpleVersionMsg "p" 0
 
 sendG :: (ToJSON a,WebSocketsData a) => a -> InGameM ()
 sendG a = do
