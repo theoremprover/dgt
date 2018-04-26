@@ -116,6 +116,8 @@ type InGameM a = StateT InGameState (StateT LichessState IO) a
 data InGameState = InGameState {
 	igsConnection :: WS.Connection }
 
+--wss://socket.lichess.org:9025/NQhi4hw1Ias2/socket/v2?sri=q9zk4e8wv4
+
 inGameL :: GameData -> InGameM a -> LichessM a
 inGameL gamedata ingamem = do
 	let cur_game = game (gamedata::GameData)
@@ -130,7 +132,7 @@ inGameL gamedata ingamem = do
 	liftIO $ putStrLn $ "path=" ++ path
 	LichessState{..} <- get
 	let
-		(host,port,options) = ("socket.lichess.org",9021,defaultConnectionOptions)
+		(host,port,options) = ("wss://socket.lichess.org",9021,defaultConnectionOptions)
 		headers = [ ("Cookie",BS.pack lisAuthCookie) ]
 	context <- liftIO $ initConnectionContext
 	connection <- liftIO $ connectTo context $ ConnectionParams {
@@ -146,7 +148,7 @@ inGameL gamedata ingamem = do
 		(maybe (return ()) (connectionPut connection . BSL.toStrict))
 	conn <- liftIO $ WS.runClientWithStream stream host path options headers return
 	flip evalStateT (InGameState conn) $ do
-		L.fork $ ( forever $ do
+		(L.fork :: MonadBaseControl IO m => m () -> m ThreadId) $ ( forever $ do
 			pingG
 			L.threadDelay 1500 )
 			`catch` ( \ e -> case fromException e of
