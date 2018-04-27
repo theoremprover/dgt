@@ -14,7 +14,7 @@ module Lichess where
 
 import           Control.Concurrent.Lifted        as L
 import           Control.Exception
-import qualified Control.Exception                as E
+import           Control.Exception.Enclosed
 import           Control.Monad
 import           Control.Monad.IO.Class           (MonadIO, liftIO)
 import           Control.Monad.Trans.Control
@@ -54,6 +54,7 @@ type LichessM a = StateT LichessState IO a
 
 rawLichessRequest :: (FromJSON val,MonadIO m) => BS.ByteString -> BS.ByteString -> String -> [(String,Maybe String)] -> [(String,String)] -> m (Network.HTTP.Conduit.Response BS.ByteString,val)
 rawLichessRequest method host path querystring headers = do
+	liftIO $ putStrLn $ "rawLichessRequest method=" ++ BS.unpack method ++ " host=" ++ BS.unpack host ++ " path=" ++ path ++ " querystring=" ++ show querystring
 	response <- liftIO ( ( httpBS $
 		setRequestMethod method $
 		setRequestPath (BS.pack path) $
@@ -62,7 +63,7 @@ rawLichessRequest method host path querystring headers = do
 		setRequestPort 443 $
 		setRequestHeaders ([("Accept","application/vnd.lichess.v3+json")] ++ map (\(a,b) -> (mk (BS.pack a),BS.pack b)) headers) $
 		setRequestHost host $
-		defaultRequest ) `E.catch` \case
+		defaultRequest ) `catch` \case
 			ex@(HttpExceptionRequest _ excontent) -> error ("XXX:" ++ show ex)
 			ex -> error $ show ex )
 	let bs = getResponseBody response
@@ -133,16 +134,16 @@ inGameL gamedata ingamem = do
 	let cur_game = game (gamedata::GameData)
 	let Right pos = fromFEN $ fen (cur_game::CreatedGame)
 	modify $ \ s -> s {
-		currentGameID = Just $ LichessInterface.id (cur_game::CreatedGame),
-		socketURL     = Just $ socket (url gamedata),
+		currentGameID = Just $ LichessInterface.id (cur_game :: CreatedGame),
+		socketURL     = Just $ LichessInterface.round (url gamedata),
 		currentPos    = Just $ pos }
 	LichessState{..} <- get
 	liftIO $ putStrLn $ "inGameL..."
-	let path = fromJust socketURL ++ "?sri=" ++ clientID
+	let path = fromJust socketURL ++ "/socket/v2?sri=" ++ clientID
 	liftIO $ putStrLn $ "path=" ++ path
 	LichessState{..} <- get
 	let
-		(host,port,options) = ("wss://socket.lichess.org",9021,defaultConnectionOptions)
+		(host,port,options) = ("socket.lichess.org",9021,defaultConnectionOptions)
 		headers = [ ("Cookie",BS.pack lisAuthCookie) ]
 	context <- liftIO $ initConnectionContext
 	connection <- liftIO $ connectTo context $ ConnectionParams {
@@ -158,14 +159,13 @@ inGameL gamedata ingamem = do
 		(maybe (return ()) (connectionPut connection . BSL.toStrict))
 	conn <- liftIO $ WS.runClientWithStream stream host path options headers return
 	flip evalStateT (InGameState conn) $ do
-		L.fork $ ( forever $ do
-			pingG
-			L.threadDelay 1500 )
-			`catch` ( \ e -> case fromException e of
-				Just async -> do
-					threadid <- L.myThreadId
-					L.throwTo threadid (async :: AsyncException)
-				Nothing    -> return () )
+		liftIO $ putStrLn "FORKING!"
+		L.fork $ ( do
+			liftIO $ putStrLn "FORKED!"
+			forever $ do
+				pingG
+				L.threadDelay 1500 )
+			`catchIO` (const $ return ())
 		ingamem
 
 pingG :: InGameM ()

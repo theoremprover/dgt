@@ -48,6 +48,7 @@ dependencies:
 - parsec
 - lifted-base
 - monad-control
+- enclosed-exceptions
 
 library:
   source-dirs: src
