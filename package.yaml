@@ -47,6 +47,7 @@ dependencies:
 - random
 - parsec
 - lifted-base
+- monad-control
 
 library:
   source-dirs: src

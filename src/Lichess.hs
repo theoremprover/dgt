@@ -1,35 +1,45 @@
-{-# LANGUAGE OverloadedStrings,RecordWildCards,LambdaCase,ScopedTypeVariables,DuplicateRecordFields,UnicodeSyntax,FlexibleInstances,UndecidableInstances,IncoherentInstances #-}
+{-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE IncoherentInstances   #-}
+{-# LANGUAGE LambdaCase            #-}
+{-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE RecordWildCards       #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE UndecidableInstances  #-}
+{-# LANGUAGE UnicodeSyntax         #-}
 {-# OPTIONS_GHC -fno-warn-tabs #-}
 
 module Lichess where
 
-import Network.HTTP.Simple
-import Network.HTTP.Conduit
-import Network.HTTP.Types.Status (Status(..))
-import qualified Data.ByteString.Char8 as BS
-import qualified Data.ByteString.Lazy as BSL
-import Network.Connection
-import Network.WebSockets as WS
-import Network.WebSockets.Stream
-import Data.Aeson.Types (explicitParseField)
-import Control.Monad
-import Control.Monad.IO.Class (MonadIO,liftIO)
-import Control.Monad.Trans.State.Strict
-import Data.CaseInsensitive (mk)
-import Data.Char (toLower)
-import Data.Aeson
-import Network.Socket (withSocketsDo)
-import System.Random
-import Wuss
-import Network.TLS
-import Data.Maybe
-import qualified Control.Exception as E
-import Control.Concurrent.Lifted as L
-import Control.Exception
+import           Control.Concurrent.Lifted        as L
+import           Control.Exception
+import qualified Control.Exception                as E
+import           Control.Monad
+import           Control.Monad.IO.Class           (MonadIO, liftIO)
+import           Control.Monad.Trans.Control
+import           Control.Monad.Trans.State.Strict
+import           Data.Aeson
+import           Data.Aeson.Types                 (explicitParseField)
+import qualified Data.ByteString.Char8            as BS
+import qualified Data.ByteString.Lazy             as BSL
+import           Data.CaseInsensitive             (mk)
+import           Data.Char                        (toLower)
+import           Data.Maybe
+import           Network.Connection
+import           Network.HTTP.Conduit
+import           Network.HTTP.Simple
+import           Network.HTTP.Types.Status        (Status (..))
+import           Network.Socket                   (withSocketsDo)
+import           Network.TLS
+import           Network.WebSockets               as WS
+import           Network.WebSockets.Stream
+import           System.Random
+import           Wuss
 
-import Chess200
-import LichessInterface
-import FEN
+import           Chess200
+import           FEN
+import           LichessInterface
 
 
 data LichessState = LichessState {
@@ -127,7 +137,7 @@ inGameL gamedata ingamem = do
 		socketURL     = Just $ socket (url gamedata),
 		currentPos    = Just $ pos }
 	LichessState{..} <- get
-	liftIO $ putStrLn $ "inGameL..."		
+	liftIO $ putStrLn $ "inGameL..."
 	let path = fromJust socketURL ++ "?sri=" ++ clientID
 	liftIO $ putStrLn $ "path=" ++ path
 	LichessState{..} <- get
@@ -148,7 +158,7 @@ inGameL gamedata ingamem = do
 		(maybe (return ()) (connectionPut connection . BSL.toStrict))
 	conn <- liftIO $ WS.runClientWithStream stream host path options headers return
 	flip evalStateT (InGameState conn) $ do
-		(L.fork :: MonadBaseControl IO m => m () -> m ThreadId) $ ( forever $ do
+		L.fork $ ( forever $ do
 			pingG
 			L.threadDelay 1500 )
 			`catch` ( \ e -> case fromException e of
