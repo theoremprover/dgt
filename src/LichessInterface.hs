@@ -211,3 +211,9 @@ instance ToJSON LiMove
 instance (FromJSON a,ToJSON a) => WebSocketsData a where
 	fromLazyByteString = either error Prelude.id . eitherDecode
 	toLazyByteString   = encode
+
+data NoMessage = NoMessage deriving Show
+instance FromJSON NoMessage where
+	parseJSON Null = pure NoMessage
+instance ToJSON NoMessage where
+	toJSON NoMessage = Null

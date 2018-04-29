@@ -128,6 +128,14 @@ data InGameState = InGameState {
 	igsConnection :: WS.Connection }
 
 --wss://socket.lichess.org:9025/NQhi4hw1Ias2/socket/v2?sri=q9zk4e8wv4
+--http://blog.teamtreehouse.com/an-introduction-to-websockets
+{-
+lila2=7da25edee266c34c003e6978eced2a8e91fffc9b-sid=zK0LbhHkwo&sessionId=VAKr1S0KMaMR
+{"t":"move","d":{"u":"h2h3","b":1}}
+{"t":"ack"}
+{"v":9,"t":"move","d":{"uci":"h2h3","san":"h3","fen":"r2qkbnr/ppp2ppp/2np4/1B2p3/4P1b1/P4N1P/1PPP1PP1/RNBQK2R","ply":9,"dests":{"a8":"b8c8","f8":"e7","e8":"e7d7","f7":"f6f5","d8":"d7c8b8e7f6g5h4","g7":"g6g5","b7":"b6","a7":"a6a5","d6":"d5","h7":"h6h5","g4":"f5e6d7c8h5f3h3","g8":"f6h6e7"}}}
+{"v":10,"t":"move","d":{"uci":"a7a6","san":"a6","fen":"r2qkbnr/1pp2ppp/p1np4/1B2p3/4P1b1/P4N1P/1PPP1PP1/RNBQK2R","ply":10,"dests":{"a1":"a2","c2":"c3c4","g2":"g3","b1":"c3","f3":"e5g5g1d4h4h2","b5":"a6c6a4c4d3e2f1","b2":"b3b4","h1":"h2g1f1","d1":"e2","a3":"a4","d2":"d3d4","h3":"h4g4","e1":"e2f1h1g1"}}}
+-}
 
 inGameL :: GameData -> InGameM a -> LichessM a
 inGameL gamedata ingamem = do
@@ -141,32 +149,36 @@ inGameL gamedata ingamem = do
 	liftIO $ putStrLn $ "inGameL..."
 	let path = fromJust socketURL ++ "/socket/v2?sri=" ++ clientID
 	liftIO $ putStrLn $ "path=" ++ path
-	LichessState{..} <- get
+	(switchingProtocols101,NoMessage) <- lichessRequestL method host path querystring headers
+
+{-
 	let
 		(host,port,options) = ("socket.lichess.org",9021,defaultConnectionOptions)
 		headers = [ ("Cookie",BS.pack lisAuthCookie) ]
+	liftIO $ print headers
 	context <- liftIO $ initConnectionContext
 	connection <- liftIO $ connectTo context $ ConnectionParams {
 		connectionHostname = host,
-		connectionPort = port,
+		connectionPort     = port,
 		connectionUseSecure = Just $ TLSSettingsSimple {
-			settingDisableCertificateValidation = True,
-			settingDisableSession = False,
-			settingUseServerName = False },
+			settingDisableCertificateValidation = False,
+			settingDisableSession               = False,
+			settingUseServerName                = False },
 		connectionUseSocks = Nothing }
 	stream <- liftIO $ makeStream
 		(fmap Just (connectionGetChunk connection))
 		(maybe (return ()) (connectionPut connection . BSL.toStrict))
 	conn <- liftIO $ WS.runClientWithStream stream host path options headers return
 	flip evalStateT (InGameState conn) $ do
-		liftIO $ putStrLn "FORKING!"
 		L.fork $ ( do
-			liftIO $ putStrLn "FORKED!"
 			forever $ do
 				pingG
-				L.threadDelay 1500 )
+				L.threadDelay 1500000 )
 			`catchIO` (const $ return ())
-		ingamem
+		ret <- ingamem
+		liftIO $ sendClose conn ()
+		return ret
+-}
 
 pingG :: InGameM ()
 pingG = do
