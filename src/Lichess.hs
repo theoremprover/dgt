@@ -135,6 +135,8 @@ lila2=7da25edee266c34c003e6978eced2a8e91fffc9b-sid=zK0LbhHkwo&sessionId=VAKr1S0K
 {"t":"ack"}
 {"v":9,"t":"move","d":{"uci":"h2h3","san":"h3","fen":"r2qkbnr/ppp2ppp/2np4/1B2p3/4P1b1/P4N1P/1PPP1PP1/RNBQK2R","ply":9,"dests":{"a8":"b8c8","f8":"e7","e8":"e7d7","f7":"f6f5","d8":"d7c8b8e7f6g5h4","g7":"g6g5","b7":"b6","a7":"a6a5","d6":"d5","h7":"h6h5","g4":"f5e6d7c8h5f3h3","g8":"f6h6e7"}}}
 {"v":10,"t":"move","d":{"uci":"a7a6","san":"a6","fen":"r2qkbnr/1pp2ppp/p1np4/1B2p3/4P1b1/P4N1P/1PPP1PP1/RNBQK2R","ply":10,"dests":{"a1":"a2","c2":"c3c4","g2":"g3","b1":"c3","f3":"e5g5g1d4h4h2","b5":"a6c6a4c4d3e2f1","b2":"b3b4","h1":"h2g1f1","d1":"e2","a3":"a4","d2":"d3d4","h3":"h4g4","e1":"e2f1h1g1"}}}
+
+https://hackage.haskell.org/package/connection-0.2.8/docs/Network-Connection.html#v:connectTo
 -}
 
 inGameL :: GameData -> InGameM a -> LichessM a
@@ -149,14 +151,12 @@ inGameL gamedata ingamem = do
 	liftIO $ putStrLn $ "inGameL..."
 	let path = fromJust socketURL ++ "/socket/v2?sri=" ++ clientID
 	liftIO $ putStrLn $ "path=" ++ path
-	(switchingProtocols101,NoMessage) <- lichessRequestL method host path querystring headers
-
-{-
 	let
 		(host,port,options) = ("socket.lichess.org",9021,defaultConnectionOptions)
 		headers = [ ("Cookie",BS.pack lisAuthCookie) ]
 	liftIO $ print headers
 	context <- liftIO $ initConnectionContext
+	liftIO $ putStrLn "Trying connectTo..."
 	connection <- liftIO $ connectTo context $ ConnectionParams {
 		connectionHostname = host,
 		connectionPort     = port,
@@ -165,10 +165,13 @@ inGameL gamedata ingamem = do
 			settingDisableSession               = False,
 			settingUseServerName                = False },
 		connectionUseSocks = Nothing }
+	liftIO $ putStrLn "connectTo connection established."
 	stream <- liftIO $ makeStream
 		(fmap Just (connectionGetChunk connection))
 		(maybe (return ()) (connectionPut connection . BSL.toStrict))
+	liftIO $ putStrLn "Trying to runClientWithStream..."
 	conn <- liftIO $ WS.runClientWithStream stream host path options headers return
+	liftIO $ putStrLn "runClientWithStream connection."
 	flip evalStateT (InGameState conn) $ do
 		L.fork $ ( do
 			forever $ do
@@ -178,7 +181,6 @@ inGameL gamedata ingamem = do
 		ret <- ingamem
 		liftIO $ sendClose conn ()
 		return ret
--}
 
 pingG :: InGameM ()
 pingG = do
