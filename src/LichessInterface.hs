@@ -217,3 +217,16 @@ instance FromJSON NoMessage where
 	parseJSON Null = pure NoMessage
 instance ToJSON NoMessage where
 	toJSON NoMessage = Null
+
+{-
+{"v":9,"t":"move","d":{
+	"uci":"h2h3",
+	"san":"h3",
+	"fen":"r2qkbnr/ppp2ppp/2np4/1B2p3/4P1b1/P4N1P/1PPP1PP1/RNBQK2R",
+	"ply":9,
+	"dests":{"a8":"b8c8","f8":"e7","e8":"e7d7","f7":"f6f5","d8":"d7c8b8e7f6g5h4","g7":"g6g5","b7":"b6","a7":"a6a5","d6":"d5","h7":"h6h5","g4":"f5e6d7c8h5f3h3","g8":"f6h6e7"
+	}}}
+-}
+
+data MoveMsg = MoveMsg {
+	

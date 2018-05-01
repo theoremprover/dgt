@@ -29,8 +29,9 @@ main = do
 		( case nowPlaying (user::User) of
 			Just (game:_) -> joinGameL (gameId game)
 			_             -> startGameL Nothing (Just White) ) $ do
-			doMoveG $ Move (1,2) (1,3) Nothing Nothing
-
+			doMoveG $ Move (5,2) (5,4) Nothing Nothing
+			move <- waitMoveG
+			liftIO $ print move
 {-
 		mb_gamedata <- startGameL Nothing (Just White)
 		case mb_gamedata of
