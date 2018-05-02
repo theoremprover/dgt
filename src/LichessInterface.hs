@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings,DuplicateRecordFields,DeriveGeneric,RecordWildCards,FlexibleInstances,UndecidableInstances #-}
+{-# LANGUAGE OverloadedStrings,DuplicateRecordFields,DeriveGeneric,RecordWildCards,FlexibleContexts,FlexibleInstances,UndecidableInstances #-}
 {-# OPTIONS_GHC -fno-warn-tabs #-}
 
 {-
@@ -17,6 +17,7 @@ import GHC.Generics
 import Network.WebSockets
 import Data.Time.Clock
 import Data.Time.Clock.POSIX
+import qualified Data.HashMap.Strict as HM
 
 import Chess200
 
@@ -208,19 +209,23 @@ instance (FromJSON a,ToJSON a) => WebSocketsData a where
 	toLazyByteString   = encode
 
 data OpponentMove = OpponentMove {
-	uci   :: CoorsList,
+	uci   :: [Coors],
 	san   :: Coors,
 	fen   :: FEN,
 	ply   :: Int,
-	dests :: M.Map Coors CoorsList } deriving (Generic,Show)
+	dests :: M.Map Coors [Coors] } deriving (Generic,Show)
 instance FromJSON OpponentMove
 instance ToJSON OpponentMove
 
-data (Show a) => ListAsString a = ListAsString [a] deriving Show
-instance (FromJSON a) => FromJSON (ListAsString a) where
-	parseJSON = withText "ListAsString" $ \ text -> ListAsString <$> pure (parse_from_list text)
-	where
-	parse_from_list text = 
+instance {-# OVERLAPS #-} FromJSON Coors where
+	parseJSON = withText "Coors" $ parse_coors . T.unpack where
+		parse_coors s | [((file,rank),"")] <- reads s = pure (file,rank)
+		parse_coors s = fail $ show s ++ " : expected Coors"
+{-
+	parseJSONList = withText "List of Coors" $ parse_coors_list [] . T.unpack where
+		parse_coors_list acc s | [((file,rank),r)] <- reads s = parse_coors_list (acc++[(file,rank)]) r
+		parse_coors_list _ s = fail $ show s ++ " : expected [Coors]"
+-}
 
 {-
 data NoMessage = NoMessage deriving Show
@@ -241,6 +246,3 @@ instance ToJSON NoMessage where
 	"dests":{"a8":"b8c8","f8":"e7","e8":"e7d7","f7":"f6f5","d8":"d7c8b8e7f6g5h4","g7":"g6g5","b7":"b6","a7":"a6a5","d6":"d5","h7":"h6h5","g4":"f5e6d7c8h5f3h3","g8":"f6h6e7"
 	}}}
 -}
-
-data MoveMsg = MoveMsg {
-	

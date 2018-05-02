@@ -28,6 +28,10 @@ type Square = Maybe (Colour,Piece)
 type Coors = (Int,Int)
 instance {-# OVERLAPS #-} Show Coors where
 	show (file,rank) = ['a'..]!!(file-1) : show rank
+instance {-# OVERLAPS #-} Read Coors where
+	readsPrec _ (file_s:rank_s:r) = [ ((file+1,rank+1),r) | 
+		Just file <- [elemIndex file_s ['a'..'h']],
+		Just rank <- [elemIndex rank_s ['1'..'8']] ]
 
 data Position = Position {
 	pBoard              :: Board,

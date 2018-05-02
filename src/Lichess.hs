@@ -16,6 +16,7 @@ import           Control.Concurrent.Lifted        as L
 import           Control.Exception
 import           Control.Exception.Enclosed
 import           Control.Monad
+import           Control.Monad.Trans.Class        (lift)
 import           Control.Monad.IO.Class           (MonadIO, liftIO)
 import           Control.Monad.Trans.Control
 import           Control.Monad.Trans.State.Strict
@@ -191,7 +192,7 @@ inGameL gamedata ingamem = do
 pingG :: InGameM ()
 pingG = do
 	liftIO $ putStrLn "Ping"
-	sendG $ LichessMsg 0 "p" Nothing
+	sendG $ LichessMsg (Just 0) "p" (Nothing :: Maybe ())
 
 sendG :: (ToJSON a,WebSocketsData a) => a -> InGameM ()
 sendG a = do
@@ -214,6 +215,11 @@ doMoveG Move{..} = do
 		Just Ü -> "r"
 		Just Ý -> "q"
 
-waitMoveG :: InGame Move
+waitMoveG :: InGameM Move
 waitMoveG = do
-	move :: LichessMsg OpponentMove <- receiveG 
+	movemsg :: LichessMsg OpponentMove <- receiveG
+	let Just OpponentMove{..} = d (movemsg :: LichessMsg OpponentMove)
+	let [from,to] = uci
+	Just pos <- lift $ gets currentPos
+	let [the_only_move] = [ move | move@Move{..} <- moveGen pos, moveFrom==from, moveTo==to ]
+	return the_only_move
