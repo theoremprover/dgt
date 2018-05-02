@@ -191,7 +191,7 @@ inGameL gamedata ingamem = do
 pingG :: InGameM ()
 pingG = do
 	liftIO $ putStrLn "Ping"
-	sendG $ SimpleVersionMsg "p" 0
+	sendG $ LichessMsg 0 "p" Nothing
 
 sendG :: (ToJSON a,WebSocketsData a) => a -> InGameM ()
 sendG a = do
@@ -207,7 +207,7 @@ receiveG = do
 
 doMoveG :: Move -> InGameM ()
 doMoveG Move{..} = do
-	sendG $ LichessMsg "move" $ Just $ LiMove $ show moveFrom ++ show moveTo ++ case movePromote of
+	sendG $ LichessMsg Nothing "move" $ Just $ LiMove $ show moveFrom ++ show moveTo ++ case movePromote of
 		Nothing -> ""
 		Just Ú -> "n"
 		Just Û -> "b"
@@ -216,4 +216,4 @@ doMoveG Move{..} = do
 
 waitMoveG :: InGame Move
 waitMoveG = do
-	move <- receiveG 
+	move :: LichessMsg OpponentMove <- receiveG 

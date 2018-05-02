@@ -10,7 +10,7 @@ module LichessInterface where
 
 import Data.Aeson
 import Data.Aeson.Types
-import qualified Data.HashMap.Strict as HM
+import qualified Data.Map as M
 import qualified Data.Text as T
 import Control.Monad
 import GHC.Generics
@@ -191,13 +191,8 @@ data PossibleMoves = PossibleMoves [(String,String)] deriving Show
 instance FromJSON PossibleMoves where
 	parseJSON = withObject "PossibleMoves" $ \ v -> PossibleMoves <$> parseObjectToAssocList v
 
-data SimpleVersionMsg = SimpleVersionMsg {
-	t :: String,
-	v :: Int } deriving (Show,Generic)
-instance ToJSON   SimpleVersionMsg
-instance FromJSON SimpleVersionMsg
-
 data LichessMsg d = LichessMsg {
+	v :: Maybe Int,
 	t :: String,
 	d :: Maybe d } deriving (Show,Generic)
 instance (ToJSON   d) => ToJSON   (LichessMsg d)
@@ -212,11 +207,30 @@ instance (FromJSON a,ToJSON a) => WebSocketsData a where
 	fromLazyByteString = either error Prelude.id . eitherDecode
 	toLazyByteString   = encode
 
+data OpponentMove = OpponentMove {
+	uci   :: CoorsList,
+	san   :: Coors,
+	fen   :: FEN,
+	ply   :: Int,
+	dests :: M.Map Coors CoorsList } deriving (Generic,Show)
+instance FromJSON OpponentMove
+instance ToJSON OpponentMove
+
+data (Show a) => ListAsString a = ListAsString [a] deriving Show
+instance (FromJSON a) => FromJSON (ListAsString a) where
+	parseJSON = withText "ListAsString" $ \ text -> ListAsString <$> pure (parse_from_list text)
+	where
+	parse_from_list text = 
+
+{-
 data NoMessage = NoMessage deriving Show
 instance FromJSON NoMessage where
 	parseJSON Null = pure NoMessage
 instance ToJSON NoMessage where
 	toJSON NoMessage = Null
+-}
+
+
 
 {-
 {"v":9,"t":"move","d":{
