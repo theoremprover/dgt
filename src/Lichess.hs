@@ -34,6 +34,7 @@ import           Network.HTTP.Types.Status        (Status (..))
 import           Network.Socket                   (withSocketsDo)
 import           Network.TLS
 import           Network.WebSockets               as WS
+import           Network.WebSockets.Connection  (receiveDataMessage)
 import           Network.WebSockets.Stream
 import           System.Random
 import           Wuss
@@ -51,7 +52,7 @@ type LichessM a = StateT LichessState IO a
 
 rawLichessRequest :: (FromJSON val,MonadIO m) => BS.ByteString -> BS.ByteString -> String -> [(String,Maybe String)] -> [(String,String)] -> m (Network.HTTP.Conduit.Response BS.ByteString,val)
 rawLichessRequest method host path querystring headers = do
-	liftIO $ putStrLn $ "rawLichessRequest method=" ++ BS.unpack method ++ " host=" ++ BS.unpack host ++ " path=" ++ path ++ " querystring=" ++ show querystring
+--	liftIO $ putStrLn $ "rawLichessRequest method=" ++ BS.unpack method ++ " host=" ++ BS.unpack host ++ " path=" ++ path ++ " querystring=" ++ show querystring
 	response <- liftIO ( ( httpBS $
 		setRequestMethod method $
 		setRequestPath (BS.pack path) $
@@ -72,9 +73,7 @@ rawLichessRequest method host path querystring headers = do
 
 lichessRequestL :: (FromJSON val) => BS.ByteString -> BS.ByteString -> String -> [(String,Maybe String)] -> [(String,String)] -> LichessM (Status,val)
 lichessRequestL method host path querystring headers = do
-	liftIO $ putStrLn $ "lichessRequestL path=" ++ show path
 	authcookie <- gets lisAuthCookie
-	liftIO $ putStrLn $ "authcookie=" ++ authcookie
 	(response,val) <- rawLichessRequest method host path querystring (("Cookie",authcookie):headers)
 	let status = getResponseStatus response
 	liftIO $ BS.putStrLn $ statusMessage status
@@ -111,7 +110,6 @@ startGameL mb_position mb_colour ingamem = do
 
 joinGameL :: String -> InGameM a -> LichessM a
 joinGameL gameid ingamem = do
-	liftIO $ putStrLn $ "joinGameL gameid=" ++ gameid
 	(status@Status{..},gamedata) <- lichessRequestL "GET" "lichess.org" ("/"++gameid) [] []
 	inGameL gamedata ingamem
 
@@ -151,7 +149,6 @@ inGameL gamedata ingamem = do
 		socketurl     = LichessInterface.round (url gamedata)
 		mycolour      = player (cur_game::CreatedGame)
 	LichessState{..} <- get
-	liftIO $ putStrLn $ "inGameL..."
 	let path = socketurl ++ "/socket/v2?sri=" ++ clientID
 	liftIO $ putStrLn $ "path=" ++ path
 	let
@@ -159,7 +156,6 @@ inGameL gamedata ingamem = do
 		headers = [ ("Cookie",BS.pack lisAuthCookie) ]
 	liftIO $ print headers
 	context <- liftIO $ initConnectionContext
-	liftIO $ putStrLn "Trying connectTo..."
 	connection <- liftIO $ connectTo context $ ConnectionParams {
 		connectionHostname = host,
 		connectionPort     = port,
@@ -168,13 +164,10 @@ inGameL gamedata ingamem = do
 			settingDisableSession               = False,
 			settingUseServerName                = False },
 		connectionUseSocks = Nothing }
-	liftIO $ putStrLn "connectTo connection established."
 	stream <- liftIO $ makeStream
 		(fmap Just (connectionGetChunk connection))
 		(maybe (return ()) (connectionPut connection . BSL.toStrict))
-	liftIO $ putStrLn "Trying to runClientWithStream..."
 	conn <- liftIO $ WS.runClientWithStream stream host path options headers return
-	liftIO $ putStrLn "runClientWithStream connection."
 	flip evalStateT (InGameState conn mycolour pos socketurl currentgameid) $ do
 		L.fork $ ( do
 			forever $ do
@@ -198,9 +191,11 @@ sendG a = do
 
 receiveG :: InGameM LichessMsg
 receiveG = do
-	liftIO $ putStrLn $ "receiveG..."
 	conn <- gets igsConnection
-	liftIO $ WS.receiveData conn
+	datamsg <- liftIO $ WS.receiveDataMessage conn
+	liftIO $ putStrLn $ "receiveG " ++ show datamsg
+	return $ fromDataMessage datamsg
+--	liftIO $ WS.receiveData conn
 
 sendMoveG :: Move -> InGameM ()
 sendMoveG Move{..} = do

@@ -38,8 +38,15 @@ gameloop = do
 	when (pColourToMove igsCurrentPos == igsMyColour) $ do
 		let move:_ = moveGen igsCurrentPos
 		sendMoveG move
+	messageloop
+	gameloop
+
+messageloop = do
 	lichessmsg <- receiveG
 	liftIO $ print lichessmsg
+	case lichessmsg of
+		LichessMsg _ "ack" Nothing -> messageloop
+		_ -> messageloop
 
 main2 = do
 	serialport:args <- getArgs

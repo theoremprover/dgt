@@ -192,14 +192,14 @@ data PossibleMoves = PossibleMoves [(String,String)] deriving Show
 instance FromJSON PossibleMoves where
 	parseJSON = withObject "PossibleMoves" $ \ v -> PossibleMoves <$> parseObjectToAssocList v
 
-data LichessMsg = LichessMsg {
+data LichessMsgHeader = LichessMsgHeader {
 	v :: Maybe Int,
-	t :: String,
-	d :: Maybe LichessMsgPayload } deriving (Show,Generic)
-instance ToJSON   LichessMsg
-instance FromJSON LichessMsg
+	t :: String } deriving (Show,Generic)
+instance ToJSON   LichessMsgHeader
+instance FromJSON LichessMsgHeader
 
-data LichessMsgPayload =
+data LichessMsg =
+	Ack |
 	OpponentMove {
 		uci   :: [Coors],
 		san   :: Coors,
@@ -209,9 +209,8 @@ data LichessMsgPayload =
 	MyMove {
 		u :: String }
 	deriving (Generic,Show)
-
-instance FromJSON LichessMsgPayload
-instance ToJSON   LichessMsgPayload
+instance FromJSON LichessMsg
+instance ToJSON   LichessMsg
 
 instance (FromJSON a,ToJSON a) => WebSocketsData a where
 	fromLazyByteString = either error Prelude.id . eitherDecode
