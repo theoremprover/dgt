@@ -45,11 +45,7 @@ import           LichessInterface
 
 data LichessState = LichessState {
 	clientID      :: String,
-	lisAuthCookie :: String,
-	myColour      :: Colour,
-	socketURL     :: Maybe String,
-	currentGameID :: Maybe String,
-	currentPos    :: Maybe Position } deriving Show
+	lisAuthCookie :: String } deriving Show
 
 type LichessM a = StateT LichessState IO a
 
@@ -97,11 +93,7 @@ withLoginL username password lichessm = withSocketsDo $ do
 			clientid <- forM [1..10] $ \ _ -> liftIO $ getStdRandom (randomR ('a','z'))
 			evalStateT (lichessm user) $ LichessState {
 				clientID      = clientid,
-				lisAuthCookie = BS.unpack cookie_name ++ "=" ++ BS.unpack cookie_value,
-				myColour      = White,
-				socketURL     = Nothing,
-				currentGameID = Nothing,
-				currentPos    = Nothing }
+				lisAuthCookie = BS.unpack cookie_name ++ "=" ++ BS.unpack cookie_value }
 
 startGameL :: Maybe Position -> Maybe Colour -> InGameM a -> LichessM a
 startGameL mb_position mb_colour ingamem = do
@@ -126,7 +118,11 @@ joinGameL gameid ingamem = do
 type InGameM a = StateT InGameState (StateT LichessState IO) a
 
 data InGameState = InGameState {
-	igsConnection :: WS.Connection }
+	igsConnection    :: WS.Connection,
+	igsMyColour      :: Colour,
+	igsCurrentPos    :: Position,
+	igsSocketURL     :: String,
+	igsCurrentGameID :: String }
 
 --wss://socket.lichess.org:9025/NQhi4hw1Ias2/socket/v2?sri=q9zk4e8wv4
 --http://blog.teamtreehouse.com/an-introduction-to-websockets
@@ -148,15 +144,15 @@ https://hackage.haskell.org/package/connection-0.2.8/docs/Network-Connection.htm
 
 inGameL :: GameData -> InGameM a -> LichessM a
 inGameL gamedata ingamem = do
-	let cur_game = game (gamedata::GameData)
-	let Right pos = fromFEN $ fen (cur_game::CreatedGame)
-	modify $ \ s -> s {
-		currentGameID = Just $ LichessInterface.id (cur_game :: CreatedGame),
-		socketURL     = Just $ LichessInterface.round (url gamedata),
-		currentPos    = Just $ pos }
+	let
+		cur_game      = game (gamedata::GameData)
+		Right pos     = fromFEN $ fen (cur_game::CreatedGame)
+		currentgameid = LichessInterface.id (cur_game :: CreatedGame)
+		socketurl     = LichessInterface.round (url gamedata)
+		mycolour      = player (cur_game::CreatedGame)
 	LichessState{..} <- get
 	liftIO $ putStrLn $ "inGameL..."
-	let path = fromJust socketURL ++ "/socket/v2?sri=" ++ clientID
+	let path = socketurl ++ "/socket/v2?sri=" ++ clientID
 	liftIO $ putStrLn $ "path=" ++ path
 	let
 		(host,port,options) = ("socket.lichess.org",443,defaultConnectionOptions)
@@ -179,7 +175,7 @@ inGameL gamedata ingamem = do
 	liftIO $ putStrLn "Trying to runClientWithStream..."
 	conn <- liftIO $ WS.runClientWithStream stream host path options headers return
 	liftIO $ putStrLn "runClientWithStream connection."
-	flip evalStateT (InGameState conn) $ do
+	flip evalStateT (InGameState conn mycolour pos socketurl currentgameid) $ do
 		L.fork $ ( do
 			forever $ do
 				pingG
@@ -192,7 +188,7 @@ inGameL gamedata ingamem = do
 pingG :: InGameM ()
 pingG = do
 	liftIO $ putStrLn "Ping"
-	sendG $ LichessMsg (Just 0) "p" (Nothing :: Maybe ())
+	sendG $ LichessMsg (Just 0) "p" Nothing
 
 sendG :: (ToJSON a,WebSocketsData a) => a -> InGameM ()
 sendG a = do
@@ -200,7 +196,7 @@ sendG a = do
 	conn <- gets igsConnection
 	liftIO $ WS.sendTextData conn a
 
-receiveG :: (FromJSON d,ToJSON d) => InGameM (LichessMsg d)
+receiveG :: InGameM LichessMsg
 receiveG = do
 	liftIO $ putStrLn $ "receiveG..."
 	conn <- gets igsConnection
@@ -208,7 +204,7 @@ receiveG = do
 
 sendMoveG :: Move -> InGameM ()
 sendMoveG Move{..} = do
-	sendG $ LichessMsg Nothing "move" $ Just $ LiMove $ show moveFrom ++ show moveTo ++ case movePromote of
+	sendG $ LichessMsg Nothing "move" $ Just $ MyMove $ show moveFrom ++ show moveTo ++ case movePromote of
 		Nothing -> ""
 		Just Ú -> "n"
 		Just Û -> "b"

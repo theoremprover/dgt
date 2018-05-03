@@ -17,8 +17,9 @@ import Text.Printf
 import System.IO
 import Text.Printf
 import Control.Monad.Loops
+import Control.Monad.Trans.State.Strict (get)
 import Control.Monad.Trans.Class (lift)
-
+import Control.Monad (when)
 
 import DGTSerial
 import Chess200
@@ -33,13 +34,12 @@ main = do
 			_             -> startGameL Nothing (Just White) gameloop
 
 gameloop = do
-	LichessState{..} <- lift get
-	when (pColourToMove currentPos == Just myColour) $ do
-		let move:_ = moveGen currentPos
+	InGameState{..} <- get
+	when (pColourToMove igsCurrentPos == igsMyColour) $ do
+		let move:_ = moveGen igsCurrentPos
 		sendMoveG move
 	lichessmsg <- receiveG
-	case lichessmsg of
-		LichessMsg 
+	liftIO $ print lichessmsg
 
 main2 = do
 	serialport:args <- getArgs

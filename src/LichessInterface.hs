@@ -192,30 +192,30 @@ data PossibleMoves = PossibleMoves [(String,String)] deriving Show
 instance FromJSON PossibleMoves where
 	parseJSON = withObject "PossibleMoves" $ \ v -> PossibleMoves <$> parseObjectToAssocList v
 
-data LichessMsg d = LichessMsg {
+data LichessMsg = LichessMsg {
 	v :: Maybe Int,
 	t :: String,
-	d :: Maybe d } deriving (Show,Generic)
-instance (ToJSON   d) => ToJSON   (LichessMsg d)
-instance (FromJSON d) => FromJSON (LichessMsg d)
+	d :: Maybe LichessMsgPayload } deriving (Show,Generic)
+instance ToJSON   LichessMsg
+instance FromJSON LichessMsg
 
-data LiMove = LiMove {
-	u :: String } deriving (Show,Generic)
-instance FromJSON LiMove
-instance ToJSON LiMove
+data LichessMsgPayload =
+	OpponentMove {
+		uci   :: [Coors],
+		san   :: Coors,
+		fen   :: FEN,
+		ply   :: Int,
+		dests :: M.Map Coors [Coors] } |
+	MyMove {
+		u :: String }
+	deriving (Generic,Show)
+
+instance FromJSON LichessMsgPayload
+instance ToJSON   LichessMsgPayload
 
 instance (FromJSON a,ToJSON a) => WebSocketsData a where
 	fromLazyByteString = either error Prelude.id . eitherDecode
 	toLazyByteString   = encode
-
-data OpponentMove = OpponentMove {
-	uci   :: [Coors],
-	san   :: Coors,
-	fen   :: FEN,
-	ply   :: Int,
-	dests :: M.Map Coors [Coors] } deriving (Generic,Show)
-instance FromJSON OpponentMove
-instance ToJSON OpponentMove
 
 instance {-# OVERLAPS #-} FromJSON Coors where
 	parseJSON = withText "Coors" $ parse_coors . T.unpack where
