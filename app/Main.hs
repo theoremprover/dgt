@@ -17,6 +17,8 @@ import Text.Printf
 import System.IO
 import Text.Printf
 import Control.Monad.Loops
+import Control.Monad.Trans.Class (lift)
+
 
 import DGTSerial
 import Chess200
@@ -26,12 +28,20 @@ import LichessInterface
 main = do
 	pw <- readFile "pw.txt"
 	withLoginL "Threetee" pw $ \ user -> do
-		( case nowPlaying (user::User) of
-			Just (game:_) -> joinGameL (gameId game)
-			_             -> startGameL Nothing (Just White) ) $ do
+		case nowPlaying (user::User) of
+			Just (game:_) -> joinGameL (gameId game) gameloop
+			_             -> startGameL Nothing (Just White) gameloop
+
+gameloop = do
+	LichessState{..} <- lift get
+	case pColourToMove currentPos == Just myColour of
+		True -> do
+			let moves = moveGen currentPos
 			doMoveG $ Move (5,2) (5,4) Nothing Nothing
-			move <- waitMoveG
-			liftIO $ print move
+		False -> waitmessageloop
+
+move <- waitMoveG
+	liftIO $ print move
 {-
 		mb_gamedata <- startGameL Nothing (Just White)
 		case mb_gamedata of
