@@ -34,24 +34,12 @@ main = do
 
 gameloop = do
 	LichessState{..} <- lift get
-	case pColourToMove currentPos == Just myColour of
-		True -> do
-			let moves = moveGen currentPos
-			doMoveG $ Move (5,2) (5,4) Nothing Nothing
-		False -> waitmessageloop
-
-move <- waitMoveG
-	liftIO $ print move
-{-
-		mb_gamedata <- startGameL Nothing (Just White)
-		case mb_gamedata of
-			Nothing -> liftIO $ putStrLn "Something went wrong."
-			Just gamedata -> do
-				liftIO $ print gamedata
-				inGameL $ do
-					doMoveG (Move (5,2) (5,4) Nothing Nothing)
-					return ()
--}
+	when (pColourToMove currentPos == Just myColour) $ do
+		let move:_ = moveGen currentPos
+		sendMoveG move
+	lichessmsg <- receiveG
+	case lichessmsg of
+		LichessMsg 
 
 main2 = do
 	serialport:args <- getArgs

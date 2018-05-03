@@ -200,14 +200,14 @@ sendG a = do
 	conn <- gets igsConnection
 	liftIO $ WS.sendTextData conn a
 
-receiveG :: (WebSocketsData a) => InGameM a
+receiveG :: (FromJSON d,ToJSON d) => InGameM (LichessMsg d)
 receiveG = do
 	liftIO $ putStrLn $ "receiveG..."
 	conn <- gets igsConnection
 	liftIO $ WS.receiveData conn
 
-doMoveG :: Move -> InGameM ()
-doMoveG Move{..} = do
+sendMoveG :: Move -> InGameM ()
+sendMoveG Move{..} = do
 	sendG $ LichessMsg Nothing "move" $ Just $ LiMove $ show moveFrom ++ show moveTo ++ case movePromote of
 		Nothing -> ""
 		Just Ú -> "n"
@@ -215,6 +215,7 @@ doMoveG Move{..} = do
 		Just Ü -> "r"
 		Just Ý -> "q"
 
+{-
 waitMoveG :: InGameM Move
 waitMoveG = do
 	movemsg :: LichessMsg OpponentMove <- receiveG
@@ -223,3 +224,4 @@ waitMoveG = do
 	Just pos <- lift $ gets currentPos
 	let [the_only_move] = [ move | move@Move{..} <- moveGen pos, moveFrom==from, moveTo==to ]
 	return the_only_move
+-}
