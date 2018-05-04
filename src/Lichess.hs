@@ -192,10 +192,7 @@ sendG a = do
 receiveG :: InGameM LichessMsg
 receiveG = do
 	conn <- gets igsConnection
-	datamsg <- liftIO $ WS.receiveDataMessage conn
-	liftIO $ putStrLn $ "receiveG " ++ show datamsg
-	return $ fromDataMessage datamsg
---	liftIO $ WS.receiveData conn
+	liftIO $ WS.receiveData conn
 
 sendMoveG :: Move -> InGameM ()
 sendMoveG Move{..} = do

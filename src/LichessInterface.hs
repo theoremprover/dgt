@@ -192,25 +192,39 @@ data PossibleMoves = PossibleMoves [(String,String)] deriving Show
 instance FromJSON PossibleMoves where
 	parseJSON = withObject "PossibleMoves" $ \ v -> PossibleMoves <$> parseObjectToAssocList v
 
-data LichessMsgHeader = LichessMsgHeader {
+data LichessMsg = LichessMsg {
 	v :: Maybe Int,
-	t :: String } deriving (Show,Generic)
-instance ToJSON   LichessMsgHeader
-instance FromJSON LichessMsgHeader
+	t :: String,
+	d :: LichessMsgPayload } deriving (Show,Generic)
+instance ToJSON   LichessMsg
+instance FromJSON LichessMsg where
+	parseJSON = withObject "LichessMsg" $ \ v -> LichessMsg <$>
+		v .:? "v" <*>
+		v .:  "t" <*>
+		explicitParseFieldMaybe (parse_payload (lookup "t" v)) v "d"
 
-data LichessMsg =
-	Ack |
-	OpponentMove {
-		uci   :: [Coors],
-		san   :: Coors,
-		fen   :: FEN,
-		ply   :: Int,
-		dests :: M.Map Coors [Coors] } |
-	MyMove {
+parse_payload (Just (String payload_type)) v =
+
+data LichessMsgPayload = PAck | POpponentMove OpponentMove | PMyMove MyMove
+	deriving (Show,Generic)
+instance ToJSON   LichessMsgPayload
+instance FromJSON LichessMsgPayload
+
+data OpponentMove = OpponentMove {
+	uci   :: [Coors],
+	san   :: Coors,
+	fen   :: FEN,
+	ply   :: Int,
+	dests :: M.Map Coors [Coors] }
+	deriving (Generic,Show)
+instance ToJSON   OpponentMove
+instance FromJSON OpponentMove
+
+data MyMove = MyMove {
 		u :: String }
 	deriving (Generic,Show)
-instance FromJSON LichessMsg
-instance ToJSON   LichessMsg
+instance ToJSON   MyMove
+instance FromJSON MyMove
 
 instance (FromJSON a,ToJSON a) => WebSocketsData a where
 	fromLazyByteString = either error Prelude.id . eitherDecode
