@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings,DuplicateRecordFields,DeriveGeneric,RecordWildCards,FlexibleContexts,FlexibleInstances,UndecidableInstances #-}
+{-# LANGUAGE OverloadedStrings,LambdaCase,DuplicateRecordFields,DeriveGeneric,RecordWildCards,FlexibleContexts,FlexibleInstances,UndecidableInstances #-}
 {-# OPTIONS_GHC -fno-warn-tabs #-}
 
 {-
@@ -195,33 +195,93 @@ instance FromJSON PossibleMoves where
 data LichessMsg = LichessMsg {
 	v :: Maybe Int,
 	t :: String,
-	d :: LichessMsgPayload } deriving (Show,Generic)
-instance ToJSON   LichessMsg
+	d :: Maybe LichessMsgPayload } deriving (Show,Generic)
+instance ToJSON   LichessMsg 
 instance FromJSON LichessMsg where
-	parseJSON = withObject "LichessMsg" $ \ v -> LichessMsg <$>
-		v .:? "v" <*>
-		v .:  "t" <*>
-		explicitParseFieldMaybe (parse_payload (lookup "t" v)) v "d"
+	parseJSON = withObject "LichessMsg" $ \ o -> LichessMsg <$>
+		o .:? "v" <*>
+		o .:  "t" <*>
+		explicitParseFieldMaybe (parse_payload (HM.lookup "t" o)) o "d"
 
-parse_payload (Just (String payload_type)) v =
+parse_payload :: Maybe Value -> (Value -> Parser LichessMsgPayload)
+parse_payload (Just (String payload_type)) = case payload_type of
+	"move"  -> withObject "POpponentMove" $ \ o -> POpponentMove <$> parseJSON (Object o)
+	"b"     -> withArray "PGameStatus" $ \ a -> PGameStatus <$> parseJSON (Array a)
+	"crowd" -> withObject "PCrowd" $ \ o -> PCrowd <$> parseJSON (Object o)
+	unknown -> \ v -> fail $ "parse_payload: t= " ++ show unknown ++ " not implemented for " ++ show v
 
-data LichessMsgPayload = PAck | POpponentMove OpponentMove | PMyMove MyMove
+data LichessMsgPayload =
+	POpponentMove OpponentMove |
+	PMyMove MyMove |
+	PGameStatus [LichessMsg] |
+	PCrowd Crowd
 	deriving (Show,Generic)
-instance ToJSON   LichessMsgPayload
+instance ToJSON   LichessMsgPayload where
+	toJSON = \case
+		POpponentMove x -> toJSON x
+		PMyMove x -> toJSON x
+		PGameStatus x -> toJSON x
+		PCrowd x -> toJSON x
 instance FromJSON LichessMsgPayload
 
+data Crowd = Crowd {
+	white    :: Bool,
+	black    :: Bool,
+	watchers :: Maybe String } deriving (Show,Generic)
+instance ToJSON   Crowd 
+instance FromJSON Crowd
+
 data OpponentMove = OpponentMove {
-	uci   :: [Coors],
-	san   :: Coors,
-	fen   :: FEN,
+	uci   :: MoveFromTo,
+	san   :: String,
+	fen   :: String,
 	ply   :: Int,
-	dests :: M.Map Coors [Coors] }
+	dests :: Dests }
 	deriving (Generic,Show)
 instance ToJSON   OpponentMove
 instance FromJSON OpponentMove
 
+opponentMove2Move pos opponentmove = head [ move |
+	move@Move{..} <- moveGen pos, moveFrom==from, moveTo==to, movePromote==mb_promote ]
+	where
+	MoveFromTo from to mb_promote = uci (opponentmove::OpponentMove)
+
+data Dests = Dests [(Coors,[Coors])] deriving (Show,Generic)
+instance ToJSON Dests where
+	toJSON (Dests m) = object $ map (\ (coors,targetcoorss) ->
+		(T.pack $ show coors,String $ T.pack $ concatMap show targetcoorss)) m
+instance FromJSON Dests where
+	parseJSON = withObject "Dests" $ \ o -> Dests <$> pure
+		(map (\ (coorstext,String targetcoorss) -> (read $ T.unpack coorstext,parse_tcoors [] $ T.unpack targetcoorss)) (HM.toList o))
+		where
+		parse_tcoors acc "" = acc
+		parse_tcoors acc s | [(tcoors,r)] <- reads s = parse_tcoors (tcoors:acc) r
+
+data TargetCoors = TargetCoors Coors (Maybe Piece)
+instance Show TargetCoors where
+	show (TargetCoors coors mb_piece) = show coors ++ case mb_piece of
+		Nothing -> ""
+		Just Ú -> "n"
+		Just Û -> "b"
+		Just Ü -> "r"
+		Just Ý -> "q"
+instance Read TargetCoors where
+	readsPrec _ s = [ (TargetCoors coors mb_piece, r) |
+		(coors,s1) <- reads s,
+		let (mb_piece,r) = case s1 of
+			(p:r) | Just piece <- lookup p [('n',Ú),('b',Û),('r',Ü),('q',Ý)] -> (Just piece,r)
+			s -> (Nothing,s) ]
+
+data MoveFromTo = MoveFromTo Coors Coors (Maybe Piece) deriving Show
+instance ToJSON MoveFromTo where
+	toJSON (MoveFromTo from to mb_fig) = String $ T.pack $ show from ++ show (TargetCoors to mb_fig)
+instance FromJSON MoveFromTo where
+	parseJSON = withText "MoveFromTo" $ \ s -> pure $ head [ MoveFromTo from to mb_piece |
+		(from,s1) <- reads $ T.unpack s,
+		(TargetCoors to mb_piece,"") <- reads s1 ]
+
 data MyMove = MyMove {
-		u :: String }
+		u :: MoveFromTo }
 	deriving (Generic,Show)
 instance ToJSON   MyMove
 instance FromJSON MyMove
@@ -234,6 +294,9 @@ instance {-# OVERLAPS #-} FromJSON Coors where
 	parseJSON = withText "Coors" $ parse_coors . T.unpack where
 		parse_coors s | [((file,rank),"")] <- reads s = pure (file,rank)
 		parse_coors s = fail $ show s ++ " : expected Coors"
+instance {-# OVERLAPS #-} ToJSON Coors where
+	toJSON coors = String $ T.pack $ show coors
+
 {-
 	parseJSONList = withText "List of Coors" $ parse_coors_list [] . T.unpack where
 		parse_coors_list acc s | [((file,rank),r)] <- reads s = parse_coors_list (acc++[(file,rank)]) r

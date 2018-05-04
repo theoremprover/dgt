@@ -17,7 +17,7 @@ import Text.Printf
 import System.IO
 import Text.Printf
 import Control.Monad.Loops
-import Control.Monad.Trans.State.Strict (get)
+import Control.Monad.Trans.State.Strict (get,modify)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad (when)
 
@@ -42,10 +42,13 @@ gameloop = do
 	gameloop
 
 messageloop = do
-	lichessmsg <- receiveG
-	liftIO $ print lichessmsg
-	case lichessmsg of
-		LichessMsg _ "ack" Nothing -> messageloop
+	LichessMsg _ t mb_payload <- receiveG
+--	liftIO $ print lichessmsg
+	case (t,mb_payload) of
+		("ack",Nothing) -> messageloop
+		(_,Just (POpponentMove opponentmove)) -> do
+			modify $ \ s -> s { igsCurrentPos = doMove (igsCurrentPos s) (opponentMove2Move (igsCurrentPos s) opponentmove) }
+			return ()
 		_ -> messageloop
 
 main2 = do

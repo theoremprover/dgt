@@ -23,6 +23,7 @@ import           Control.Monad.Trans.State.Strict
 import           Data.Aeson
 import           Data.Aeson.Types                 (explicitParseField)
 import qualified Data.ByteString.Char8            as BS
+import qualified Data.ByteString.Lazy.Char8       as BSL8
 import qualified Data.ByteString.Lazy             as BSL
 import           Data.CaseInsensitive             (mk)
 import           Data.Char                        (toLower)
@@ -33,7 +34,7 @@ import           Network.HTTP.Simple
 import           Network.HTTP.Types.Status        (Status (..))
 import           Network.Socket                   (withSocketsDo)
 import           Network.TLS
-import           Network.WebSockets               as WS
+import           Network.WebSockets             as WS
 import           Network.WebSockets.Connection  (receiveDataMessage)
 import           Network.WebSockets.Stream
 import           System.Random
@@ -183,25 +184,27 @@ pingG = do
 	liftIO $ putStrLn "Ping"
 	sendG $ LichessMsg (Just 0) "p" Nothing
 
-sendG :: (ToJSON a,WebSocketsData a) => a -> InGameM ()
-sendG a = do
-	liftIO $ putStrLn $ "sendG " ++ show (toJSON a)
+sendG :: LichessMsg -> InGameM ()
+sendG lichessmsg = do
+	liftIO $ putStrLn $ "sendG " ++ show (toJSON lichessmsg)
 	conn <- gets igsConnection
-	liftIO $ WS.sendTextData conn a
+	liftIO $ WS.sendTextData conn lichessmsg
 
 receiveG :: InGameM LichessMsg
 receiveG = do
 	conn <- gets igsConnection
-	liftIO $ WS.receiveData conn
+	datamsg <- liftIO $ receiveDataMessage conn
+	let (lichessmsg,x) :: (LichessMsg,String) = case datamsg of
+		Text x -> (fromLazyByteString x,BSL8.unpack x)
+		Binary x -> (fromLazyByteString x,BSL8.unpack x)
+	liftIO $ putStrLn $ "receiveG: " ++ x
+--	lichessmsg <- liftIO $ WS.receiveData conn
+	liftIO $ putStrLn $ "receiveG: " ++ show lichessmsg
+	return lichessmsg
 
 sendMoveG :: Move -> InGameM ()
 sendMoveG Move{..} = do
-	sendG $ LichessMsg Nothing "move" $ Just $ MyMove $ show moveFrom ++ show moveTo ++ case movePromote of
-		Nothing -> ""
-		Just Ú -> "n"
-		Just Û -> "b"
-		Just Ü -> "r"
-		Just Ý -> "q"
+	sendG $ LichessMsg Nothing "move" $ Just $ PMyMove $ MyMove $ MoveFromTo moveFrom moveTo movePromote
 
 {-
 waitMoveG :: InGameM Move
