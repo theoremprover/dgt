@@ -107,6 +107,9 @@ data Game = Game {
 	secondsLeft :: Maybe Int } deriving (Show,Generic)
 instance FromJSON Game
 
+instance ToJSON Colour where
+	toJSON White = String "white"
+	toJSON Black = String "black"
 instance FromJSON Colour where
 	parseJSON (String c) = pure $ case c of
 		"white" -> White
@@ -144,6 +147,7 @@ data GameStatus = GameStatus {
 	id   :: Int,
 	name :: String } deriving (Show,Generic)
 instance FromJSON GameStatus
+instance ToJSON GameStatus
 
 data LiURL = LiURL {
 	socket :: String,
@@ -203,26 +207,59 @@ instance FromJSON LichessMsg where
 		o .:  "t" <*>
 		explicitParseFieldMaybe (parse_payload (HM.lookup "t" o)) o "d"
 
+{-
+receiveG: {"t":"b","d":[
+	{"v":8,"t":"move","d":{
+		"uci":"c5f2",
+		"san":"Bxf2#",
+		"fen":"r1b1k1nr/ppp2ppp/2n1pq2/3p4/8/P7/RPPPPbPP/1NBQKBNR",
+		"ply":12,
+		"dests":null,
+		"status":{"id":30,"name":"mate"},
+		"winner":"black","check":true}},
+	{"v":9,"t":"end","d":"black"},
+	{"v":10,"t":"endData","d":{"winner":"black","status":{"id":30,"name":"mate"}}}
+]}
+
+{"v":9,"t":"move","d":{
+	"uci":"h2h3",
+	"san":"h3",
+	"fen":"r2qkbnr/ppp2ppp/2np4/1B2p3/4P1b1/P4N1P/1PPP1PP1/RNBQK2R",
+	"ply":9,
+	"dests":{"a8":"b8c8","f8":"e7","e8":"e7d7","f7":"f6f5","d8":"d7c8b8e7f6g5h4","g7":"g6g5","b7":"b6","a7":"a6a5","d6":"d5","h7":"h6h5","g4":"f5e6d7c8h5f3h3","g8":"f6h6e7"
+	}}}
+-}
+
 parse_payload :: Maybe Value -> (Value -> Parser LichessMsgPayload)
 parse_payload (Just (String payload_type)) = case payload_type of
-	"move"  -> withObject "POpponentMove" $ \ o -> POpponentMove <$> parseJSON (Object o)
-	"b"     -> withArray "PGameStatus" $ \ a -> PGameStatus <$> parseJSON (Array a)
-	"crowd" -> withObject "PCrowd" $ \ o -> PCrowd <$> parseJSON (Object o)
-	unknown -> \ v -> fail $ "parse_payload: t= " ++ show unknown ++ " not implemented for " ++ show v
+	"move"    -> withObject "POpponentMove" $ \ o -> PLiMove <$> parseJSON (Object o)
+	"b"       -> withArray "PMessages" $ \ a -> PMessages <$> parseJSON (Array a)
+	"crowd"   -> withObject "PCrowd" $ \ o -> PCrowd <$> parseJSON (Object o)
+	"end"     -> withObject "PEnd" $ \ o -> PEnd <$> parseJSON (Object o)
+	"endData" -> withObject "PEndData" $ \ o -> PEndData <$> parseJSON (Object o)
+	unknown   -> \ v -> fail $ "parse_payload: t= " ++ show unknown ++ " not implemented for " ++ show v
 
 data LichessMsgPayload =
-	POpponentMove OpponentMove |
+	PLiMove LiMove |
 	PMyMove MyMove |
-	PGameStatus [LichessMsg] |
+	PMessages [LichessMsg] |
+	PEnd Colour |
+	PEndData EndData |
 	PCrowd Crowd
 	deriving (Show,Generic)
 instance ToJSON   LichessMsgPayload where
 	toJSON = \case
-		POpponentMove x -> toJSON x
+		PLiMove x -> toJSON x
 		PMyMove x -> toJSON x
-		PGameStatus x -> toJSON x
+		PMessages x -> toJSON x
 		PCrowd x -> toJSON x
 instance FromJSON LichessMsgPayload
+
+data EndData = EndData {
+	winner :: Colour,
+	status :: GameStatus } deriving (Show,Generic)
+instance ToJSON   EndData 
+instance FromJSON EndData
 
 data Crowd = Crowd {
 	white    :: Bool,
@@ -231,20 +268,23 @@ data Crowd = Crowd {
 instance ToJSON   Crowd 
 instance FromJSON Crowd
 
-data OpponentMove = OpponentMove {
-	uci   :: MoveFromTo,
-	san   :: String,
-	fen   :: String,
-	ply   :: Int,
-	dests :: Dests }
+data LiMove = LiMove {
+	uci    :: MoveFromTo,
+	san    :: String,
+	fen    :: String,
+	ply    :: Int,
+	dests  :: Maybe Dests,
+	status :: Maybe GameStatus,
+	winner :: Maybe GameWinner }
 	deriving (Generic,Show)
-instance ToJSON   OpponentMove
-instance FromJSON OpponentMove
+instance ToJSON   LiMove
+instance FromJSON LiMove
 
-opponentMove2Move pos opponentmove = head [ move |
-	move@Move{..} <- moveGen pos, moveFrom==from, moveTo==to, movePromote==mb_promote ]
-	where
-	MoveFromTo from to mb_promote = uci (opponentmove::OpponentMove)
+data GameWinner = GameWinner {
+	winner :: Colour,
+	check  :: Bool } deriving (Generic,Show)
+instance ToJSON   GameWinner
+instance FromJSON GameWinner
 
 data Dests = Dests [(Coors,[Coors])] deriving (Show,Generic)
 instance ToJSON Dests where
@@ -296,29 +336,3 @@ instance {-# OVERLAPS #-} FromJSON Coors where
 		parse_coors s = fail $ show s ++ " : expected Coors"
 instance {-# OVERLAPS #-} ToJSON Coors where
 	toJSON coors = String $ T.pack $ show coors
-
-{-
-	parseJSONList = withText "List of Coors" $ parse_coors_list [] . T.unpack where
-		parse_coors_list acc s | [((file,rank),r)] <- reads s = parse_coors_list (acc++[(file,rank)]) r
-		parse_coors_list _ s = fail $ show s ++ " : expected [Coors]"
--}
-
-{-
-data NoMessage = NoMessage deriving Show
-instance FromJSON NoMessage where
-	parseJSON Null = pure NoMessage
-instance ToJSON NoMessage where
-	toJSON NoMessage = Null
--}
-
-
-
-{-
-{"v":9,"t":"move","d":{
-	"uci":"h2h3",
-	"san":"h3",
-	"fen":"r2qkbnr/ppp2ppp/2np4/1B2p3/4P1b1/P4N1P/1PPP1PP1/RNBQK2R",
-	"ply":9,
-	"dests":{"a8":"b8c8","f8":"e7","e8":"e7d7","f7":"f6f5","d8":"d7c8b8e7f6g5h4","g7":"g6g5","b7":"b6","a7":"a6a5","d6":"d5","h7":"h6h5","g4":"f5e6d7c8h5f3h3","g8":"f6h6e7"
-	}}}
--}

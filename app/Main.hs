@@ -17,7 +17,7 @@ import Text.Printf
 import System.IO
 import Text.Printf
 import Control.Monad.Loops
-import Control.Monad.Trans.State.Strict (get,modify)
+import Control.Monad.Trans.State.Strict (get,gets)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad (when)
 
@@ -34,22 +34,15 @@ main = do
 			_             -> startGameL Nothing (Just White) gameloop
 
 gameloop = do
-	InGameState{..} <- get
-	when (pColourToMove igsCurrentPos == igsMyColour) $ do
-		let move:_ = moveGen igsCurrentPos
+	igs <- get
+	let pos@Position{..} = igsCurrentPos igs
+	when ( pColourToMove == igsMyColour igs && pNextMoveNumber == igsMyNextMove igs ) $ do
+		let move:_ = moveGen pos
 		sendMoveG move
-	messageloop
-	gameloop
-
-messageloop = do
-	LichessMsg _ t mb_payload <- receiveG
---	liftIO $ print lichessmsg
-	case (t,mb_payload) of
-		("ack",Nothing) -> messageloop
-		(_,Just (POpponentMove opponentmove)) -> do
-			modify $ \ s -> s { igsCurrentPos = doMove (igsCurrentPos s) (opponentMove2Move (igsCurrentPos s) opponentmove) }
-			return ()
-		_ -> messageloop
+	messageLoopG
+	inprogress <- gets igsGameInProgress
+	when inprogress gameloop
+	liftIO $ putStrLn "GAME END."
 
 main2 = do
 	serialport:args <- getArgs
