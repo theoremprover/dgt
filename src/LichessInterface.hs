@@ -233,7 +233,7 @@ receiveG: {"t":"b","d":[
 parse_payload :: Maybe Value -> (Value -> Parser LichessMsgPayload)
 parse_payload (Just (String payload_type)) = case payload_type of
 	"move"    -> withObject "POpponentMove" $ \ o -> PLiMove <$> parseJSON (Object o)
-	"b"       -> withArray "PMessages" $ \ a -> PMessages <$> parseJSON (Array a)
+	"b"       -> withArray  "PMessages" $ \ a -> PMessages <$> parseJSON (Array a)
 	"crowd"   -> withObject "PCrowd" $ \ o -> PCrowd <$> parseJSON (Object o)
 	"end"     -> withObject "PEnd" $ \ o -> PEnd <$> parseJSON (Object o)
 	"endData" -> withObject "PEndData" $ \ o -> PEndData <$> parseJSON (Object o)
