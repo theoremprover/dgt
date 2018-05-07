@@ -193,11 +193,16 @@ sendMoveG :: Move -> InGameM ()
 sendMoveG Move{..} = do
 	sendG $ LichessMsg Nothing "move" $ Just $ PMyMove $ MyMove $ MoveFromTo moveFrom moveTo movePromote
 
-messageLoopG = untilM_ (return ()) (receiveG >>= handleMessageG)	
+messageLoopG = do
+	msg <- receiveG
+	liftIO $ do
+		writeFile "msgs.log" $ show msg ++ "\n----------------"
+	breakloop <- handleMessageG msg
+	when (not breakloop) messageLoopG
 
 handleMessageG (LichessMsg _ t mb_payload) = do
 	case (t,mb_payload) of
-		(_,Just (PMessages msgs))        -> sequence_ $ map handleMessageG msgs
+		(_,Just (PMessages msgs)) -> sequence_ $ map handleMessageG msgs
 		(_,Just (PLiMove limove)) -> doMoveG limove
 		(_,Just (PEndData _))     -> modify $ \ s -> s { igsGameInProgress = False }
 		_                         -> return ()
