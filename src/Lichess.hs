@@ -84,6 +84,7 @@ lichessRequestL method host path querystring headers = do
 
 withLoginL :: String -> String -> (User -> LichessM a) -> IO a
 withLoginL username password lichessm = withSocketsDo $ do
+	writeFile "msgs.log" ""
 	(response,user::User) <- rawLichessRequest "POST" "lichess.org" "/login" [("username",Just username),("password",Just password)] []
 	let Status{..} = getResponseStatus response
 	case statusCode == 200 of
@@ -125,6 +126,9 @@ data InGameState = InGameState {
 	igsCurrentGameID  :: String,
 	igsMyNextMove     :: Int,
 	igsGameInProgress :: Bool }
+	deriving Show
+instance Show WS.Connection where
+	show _ = "<SOME CONNECTION>"
 
 inGameL :: GameData -> InGameM a -> LichessM a
 inGameL gamedata ingamem = do
@@ -133,6 +137,7 @@ inGameL gamedata ingamem = do
 		currentgameid = LichessInterface.id (cur_game :: CreatedGame)
 		socketurl     = LichessInterface.round (url gamedata)
 		mycolour      = player (cur_game::CreatedGame)
+	liftIO $ appendFile "msgs.log" (show gamedata ++ "\n")
 	LichessState{..} <- get
 	let path = socketurl ++ "/socket/v2?sri=" ++ clientID
 	liftIO $ putStrLn $ "path=" ++ path
@@ -153,14 +158,15 @@ inGameL gamedata ingamem = do
 		(fmap Just (connectionGetChunk connection))
 		(maybe (return ()) (connectionPut connection . BSL.toStrict))
 	conn <- liftIO $ WS.runClientWithStream stream host path options headers return
+	liftIO $ appendFile "msgs.log" $ "FEN: " ++ fen (cur_game::CreatedGame)
 	let
-		Right Position{..} = fromFEN $ fen (cur_game::CreatedGame)
+		Right pos@Position{..} = fromFEN (fen (cur_game::CreatedGame))
 		mynextmove = pNextMoveNumber + if pColourToMove == Black && mycolour == White then 1 else 0
-	flip evalStateT (InGameState conn mycolour initialPosition socketurl currentgameid mynextmove True) $ do
+	flip evalStateT (InGameState conn mycolour pos socketurl currentgameid mynextmove True) $ do
 		L.fork $ ( do
 			forever $ do
 				pingG
-				L.threadDelay 1500000 )
+				L.threadDelay (1500*1000) )
 			`catchIO` (const $ return ())
 		ret <- ingamem
 		liftIO $ sendClose conn ()
@@ -176,6 +182,8 @@ sendG lichessmsg = do
 	liftIO $ putStrLn $ "sendG " ++ show (toJSON lichessmsg)
 	conn <- gets igsConnection
 	liftIO $ WS.sendTextData conn lichessmsg
+	liftIO $ do
+		appendFile "msgs.log" $ "SENT: " ++ show lichessmsg ++ "\n"
 
 receiveG :: InGameM LichessMsg
 receiveG = do
@@ -187,6 +195,8 @@ receiveG = do
 	liftIO $ putStrLn $ "receiveG: " ++ x
 --	lichessmsg <- liftIO $ WS.receiveData conn
 	liftIO $ putStrLn $ "receiveG: " ++ show lichessmsg
+	liftIO $ do
+		appendFile "msgs.log" $ "RECV: " ++ show lichessmsg ++ "\n"
 	return lichessmsg
 
 sendMoveG :: Move -> InGameM ()
@@ -195,8 +205,6 @@ sendMoveG Move{..} = do
 
 messageLoopG = do
 	msg <- receiveG
-	liftIO $ do
-		writeFile "msgs.log" $ show msg ++ "\n----------------"
 	breakloop <- handleMessageG msg
 	when (not breakloop) messageLoopG
 
@@ -220,7 +228,8 @@ doMoveG limove = do
 		move:_ -> move
 		_ -> error $ "limove=" ++ show limove ++ "\nmoveGen pos = " ++ show (moveGen pos)
 	modify $ \ s -> s { igsCurrentPos = doMove (igsCurrentPos s) move }
-
+	cpos <- gets igsCurrentPos
+	liftIO $ print cpos
 {-
 receiveG: {"t":"b","d":[
 	{"v":8,"t":"move","d":{
