@@ -34,16 +34,17 @@ main = do
 			_             -> startGameL Nothing (Just White) gameloop
 
 gameloop = do
-	igs <- get
+	igs <- igsGet
 	let pos@Position{..} = igsCurrentPos igs
 	liftIO $ appendFile "msgs.log" $ show igs ++ "\n"
 	when ( pColourToMove == igsMyColour igs && pNextMoveNumber == igsMyNextMove igs && not (igsMyMoveSent igs)) $ do
 		let move:_ = moveGen pos
 		sendMoveG move
 	messageLoopG
-	inprogress <- gets igsGameInProgress
-	when inprogress gameloop
-	liftIO $ putStrLn "GAME END."
+	inprogress <- igsGets igsGameInProgress
+	case inprogress of
+		True  -> gameloop
+		False -> liftIO $ putStrLn "GAME END."
 
 main2 = do
 	serialport:args <- getArgs

@@ -49,6 +49,7 @@ dependencies:
 - lifted-base
 - monad-control
 - enclosed-exceptions
+- clock
 
 library:
   source-dirs: src

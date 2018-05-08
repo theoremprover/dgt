@@ -40,6 +40,8 @@ import           Network.WebSockets.Connection  (receiveDataMessage)
 import           Network.WebSockets.Stream
 import           System.Random
 import           Wuss
+import System.Clock
+import Control.Concurrent.MVar.Lifted
 
 import           Chess200
 import           FEN
@@ -116,7 +118,20 @@ joinGameL gameid ingamem = do
 	(status@Status{..},gamedata) <- lichessRequestL "GET" "lichess.org" ("/"++gameid) [] []
 	inGameL gamedata ingamem
 
-type InGameM a = StateT InGameState (StateT LichessState IO) a
+type InGameM a = StateT (MVar InGameState) (StateT LichessState IO) a
+
+igsGet :: InGameM InGameState
+igsGet = do
+	mvar <- get
+	readMVar mvar
+
+igsGets :: (InGameState -> a) -> InGameM a
+igsGets selector = igsGet >>= return . selector
+
+igsModify :: (InGameState -> InGameState) -> InGameM ()
+igsModify f = do
+	mvar <- get
+	modifyMVar_ mvar (return . f)
 
 data InGameState = InGameState {
 	igsConnection     :: WS.Connection,
@@ -126,7 +141,8 @@ data InGameState = InGameState {
 	igsCurrentGameID  :: String,
 	igsMyNextMove     :: Int,
 	igsGameInProgress :: Bool,
-	igsMyMoveSent     :: Bool }
+	igsMyMoveSent     :: Bool,
+	igsLastPing       :: Maybe TimeSpec }
 	deriving Show
 instance Show WS.Connection where
 	show _ = "<SOME CONNECTION>"
@@ -163,7 +179,8 @@ inGameL gamedata ingamem = do
 	let
 		Right pos@Position{..} = fromFEN (fen (cur_game::CreatedGame))
 		mynextmove = pNextMoveNumber + if pColourToMove == Black && mycolour == White then 1 else 0
-	flip evalStateT (InGameState conn mycolour pos socketurl currentgameid mynextmove True False) $ do
+	igs <- newMVar $ InGameState conn mycolour pos socketurl currentgameid mynextmove True False Nothing
+	flip evalStateT igs $ do
 		L.fork $ ( do
 			forever $ do
 				pingG
@@ -175,29 +192,33 @@ inGameL gamedata ingamem = do
 
 pingG :: InGameM ()
 pingG = do
-	liftIO $ putStrLn "Ping"
-	sendG $ LichessMsg (Just 0) "p" Nothing
+	mb_lastping <- igsGets igsLastPing
+	when (isNothing mb_lastping) $ do
+		sendG $ LichessMsg (Just 0) "p" Nothing
+		now <- liftIO $ getTime Monotonic
+		igsModify $ \ s -> s { igsLastPing = Just now }
 
 sendG :: LichessMsg -> InGameM ()
 sendG lichessmsg = do
 	liftIO $ putStrLn $ "sendG " ++ show (toJSON lichessmsg)
-	conn <- gets igsConnection
+	conn <- igsGets igsConnection
 	liftIO $ WS.sendTextData conn lichessmsg
-	modify $ \ s -> s { igsMyMoveSent = True }
+	igsModify $ \ s -> s { igsMyMoveSent = True }
 	liftIO $ do
 		appendFile "msgs.log" $ "SENT: " ++ show lichessmsg ++ "\n"
 
 receiveG :: InGameM LichessMsg
 receiveG = do
-	conn <- gets igsConnection
+	conn <- igsGets igsConnection
 	datamsg <- liftIO $ receiveDataMessage conn
 	let (lichessmsg,x) :: (LichessMsg,String) = case datamsg of
 		Text   x -> (fromLazyByteString x,BSL8.unpack x)
 		Binary x -> (fromLazyByteString x,BSL8.unpack x)
 --	liftIO $ putStrLn $ "receiveG: " ++ x
 --	lichessmsg <- liftIO $ WS.receiveData conn
-	liftIO $ putStrLn $ "receiveG: " ++ show lichessmsg
+--	liftIO $ putStrLn $ "receiveG: " ++ show lichessmsg
 	liftIO $ do
+		appendFile "msgs.log" $ "RECV = " ++ x ++ "\n"
 		appendFile "msgs.log" $ "RECV: " ++ show lichessmsg ++ "\n"
 	return lichessmsg
 
@@ -214,49 +235,36 @@ handleMessageG (LichessMsg _ t mb_payload) = do
 	case (t,mb_payload) of
 		(_,Just (PMessages msgs)) -> sequence_ $ map handleMessageG msgs
 		(_,Just (PLiMove limove)) -> do
-			Position{..} <- gets igsCurrentPos
+			Position{..} <- igsGets igsCurrentPos
 			when (pNextMoveNumber*2-1 + (if pColourToMove==White then 0 else 1) == ply (limove::LiMove)) $ do
 				doMoveG limove
-				modify $ \ s -> s { igsMyMoveSent = False }
-		(_,Just (PEndData _))     -> modify $ \ s -> s { igsGameInProgress = False }
+				igsModify $ \ s -> s { igsMyMoveSent = False }
+		("n",_) -> do
+			now <- liftIO $ getTime Monotonic
+			mb_lastping <- igsGets igsLastPing
+			case mb_lastping of
+				Just lastping -> do
+					let lag_ns = toNanoSecs $ diffTimeSpec now lastping
+					liftIO $ putStrLn $ "### Lag = " ++ show (div lag_ns 1000000) ++ " ms"
+					igsModify $ \ s -> s { igsLastPing = Nothing }
+				Nothing -> return ()
+		(_,Just (PEndData _))     -> igsModify $ \ s -> s { igsGameInProgress = False }
 		_                         -> return ()
-	InGameState{..} <- get
+	InGameState{..} <- igsGet
 	let pos@Position{..} = igsCurrentPos
 	let nowmetomove = pColourToMove==igsMyColour && pNextMoveNumber==igsMyNextMove
-	when nowmetomove $ do
-		liftIO $ putStrLn "NOW ME TO MOVE ---------"
-		liftIO $ appendFile "msgs.log" "NOW ME TO MOVE ---------"
 	return nowmetomove
 	
 doMoveG :: LiMove -> InGameM ()
 doMoveG limove = do
 	let MoveFromTo from to mb_promote = uci (limove::LiMove)
-	pos <- gets igsCurrentPos
+	pos <- igsGets igsCurrentPos
 	let move = case [ move | move@Move{..} <- moveGen pos, moveFrom==from, moveTo==to, movePromote==mb_promote ] of
 		move:_ -> move
 		_ -> error $ "limove=" ++ show limove ++ "\nmoveGen pos = " ++ show (moveGen pos)
-	modify $ \ s -> s { igsCurrentPos = doMove (igsCurrentPos s) move }
-	cpos <- gets igsCurrentPos
-	liftIO $ putStrLn $ show cpos ++ "\n"
-{-
-receiveG: {"t":"b","d":[
-	{"v":8,"t":"move","d":{
-		"uci":"c5f2",
-		"san":"Bxf2#",
-		"fen":"r1b1k1nr/ppp2ppp/2n1pq2/3p4/8/P7/RPPPPbPP/1NBQKBNR",
-		"ply":12,
-		"dests":null,
-		"status":{"id":30,"name":"mate"},
-		"winner":"black","check":true}},
-	{"v":9,"t":"end","d":"black"},
-	{"v":10,"t":"endData","d":{"winner":"black","status":{"id":30,"name":"mate"}}}
-]}
-
-{"v":9,"t":"move","d":{
-	"uci":"h2h3",
-	"san":"h3",
-	"fen":"r2qkbnr/ppp2ppp/2np4/1B2p3/4P1b1/P4N1P/1PPP1PP1/RNBQK2R",
-	"ply":9,
-	"dests":{"a8":"b8c8","f8":"e7","e8":"e7d7","f7":"f6f5","d8":"d7c8b8e7f6g5h4","g7":"g6g5","b7":"b6","a7":"a6a5","d6":"d5","h7":"h6h5","g4":"f5e6d7c8h5f3h3","g8":"f6h6e7"
-	}}}
--}
+	igsModify $ \ s -> s {
+		igsCurrentPos = doMove (igsCurrentPos s) move,
+		igsMyNextMove = igsMyNextMove s + if pColourToMove (igsCurrentPos s) == igsMyColour s then 1 else 0 }
+	igs <- igsGet
+	liftIO $ print (igsCurrentPos igs)
+	liftIO $ appendFile "msgs.log" $ "MOVED:\n" ++ show igs ++ "\n"

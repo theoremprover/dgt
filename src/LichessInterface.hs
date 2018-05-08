@@ -235,7 +235,7 @@ parse_payload (Just (String payload_type)) = case payload_type of
 	"move"    -> withObject "POpponentMove" $ \ o -> PLiMove <$> parseJSON (Object o)
 	"b"       -> withArray  "PMessages" $ \ a -> PMessages <$> parseJSON (Array a)
 	"crowd"   -> withObject "PCrowd" $ \ o -> PCrowd <$> parseJSON (Object o)
-	"end"     -> withObject "PEnd" $ \ o -> PEnd <$> parseJSON (Object o)
+	"end"     -> withText   "Colour" $ \ t -> PEnd <$> parseJSON (String t)
 	"endData" -> withObject "PEndData" $ \ o -> PEndData <$> parseJSON (Object o)
 	unknown   -> \ v -> fail $ "parse_payload: t= " ++ show unknown ++ " not implemented for " ++ show v
 
