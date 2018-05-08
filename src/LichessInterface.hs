@@ -275,16 +275,19 @@ data LiMove = LiMove {
 	ply    :: Int,
 	dests  :: Maybe Dests,
 	status :: Maybe GameStatus,
-	winner :: Maybe GameWinner }
+	winner :: Maybe Colour,
+	check  :: Maybe Bool }
 	deriving (Generic,Show)
 instance ToJSON   LiMove
 instance FromJSON LiMove
 
+{-
 data GameWinner = GameWinner {
 	winner :: Colour,
 	check  :: Bool } deriving (Generic,Show)
 instance ToJSON   GameWinner
 instance FromJSON GameWinner
+-}
 
 data Dests = Dests [(Coors,[Coors])] deriving (Show,Generic)
 instance ToJSON Dests where
