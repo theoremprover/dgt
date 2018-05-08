@@ -125,7 +125,8 @@ data InGameState = InGameState {
 	igsSocketURL      :: String,
 	igsCurrentGameID  :: String,
 	igsMyNextMove     :: Int,
-	igsGameInProgress :: Bool }
+	igsGameInProgress :: Bool,
+	igsMyMoveSent     :: Bool }
 	deriving Show
 instance Show WS.Connection where
 	show _ = "<SOME CONNECTION>"
@@ -162,7 +163,7 @@ inGameL gamedata ingamem = do
 	let
 		Right pos@Position{..} = fromFEN (fen (cur_game::CreatedGame))
 		mynextmove = pNextMoveNumber + if pColourToMove == Black && mycolour == White then 1 else 0
-	flip evalStateT (InGameState conn mycolour pos socketurl currentgameid mynextmove True) $ do
+	flip evalStateT (InGameState conn mycolour pos socketurl currentgameid mynextmove True False) $ do
 		L.fork $ ( do
 			forever $ do
 				pingG
@@ -182,6 +183,7 @@ sendG lichessmsg = do
 	liftIO $ putStrLn $ "sendG " ++ show (toJSON lichessmsg)
 	conn <- gets igsConnection
 	liftIO $ WS.sendTextData conn lichessmsg
+	modify $ \ s -> s { igsMyMoveSent = True }
 	liftIO $ do
 		appendFile "msgs.log" $ "SENT: " ++ show lichessmsg ++ "\n"
 
@@ -192,7 +194,7 @@ receiveG = do
 	let (lichessmsg,x) :: (LichessMsg,String) = case datamsg of
 		Text   x -> (fromLazyByteString x,BSL8.unpack x)
 		Binary x -> (fromLazyByteString x,BSL8.unpack x)
-	liftIO $ putStrLn $ "receiveG: " ++ x
+--	liftIO $ putStrLn $ "receiveG: " ++ x
 --	lichessmsg <- liftIO $ WS.receiveData conn
 	liftIO $ putStrLn $ "receiveG: " ++ show lichessmsg
 	liftIO $ do
@@ -211,13 +213,19 @@ messageLoopG = do
 handleMessageG (LichessMsg _ t mb_payload) = do
 	case (t,mb_payload) of
 		(_,Just (PMessages msgs)) -> sequence_ $ map handleMessageG msgs
-		(_,Just (PLiMove limove)) -> doMoveG limove
+		(_,Just (PLiMove limove)) -> do
+			Position{..} <- gets igsCurrentPos
+			when (pNextMoveNumber*2-1 + (if pColourToMove==White then 0 else 1) == ply (limove::LiMove)) $ do
+				doMoveG limove
+				modify $ \ s -> s { igsMyMoveSent = False }
 		(_,Just (PEndData _))     -> modify $ \ s -> s { igsGameInProgress = False }
 		_                         -> return ()
 	InGameState{..} <- get
 	let pos@Position{..} = igsCurrentPos
 	let nowmetomove = pColourToMove==igsMyColour && pNextMoveNumber==igsMyNextMove
-	when nowmetomove $ liftIO $ print pos
+	when nowmetomove $ do
+		liftIO $ putStrLn "NOW ME TO MOVE ---------"
+		liftIO $ appendFile "msgs.log" "NOW ME TO MOVE ---------"
 	return nowmetomove
 	
 doMoveG :: LiMove -> InGameM ()
@@ -229,7 +237,7 @@ doMoveG limove = do
 		_ -> error $ "limove=" ++ show limove ++ "\nmoveGen pos = " ++ show (moveGen pos)
 	modify $ \ s -> s { igsCurrentPos = doMove (igsCurrentPos s) move }
 	cpos <- gets igsCurrentPos
-	liftIO $ print cpos
+	liftIO $ putStrLn $ show cpos ++ "\n"
 {-
 receiveG: {"t":"b","d":[
 	{"v":8,"t":"move","d":{

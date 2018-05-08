@@ -281,14 +281,6 @@ data LiMove = LiMove {
 instance ToJSON   LiMove
 instance FromJSON LiMove
 
-{-
-data GameWinner = GameWinner {
-	winner :: Colour,
-	check  :: Bool } deriving (Generic,Show)
-instance ToJSON   GameWinner
-instance FromJSON GameWinner
--}
-
 data Dests = Dests [(Coors,[Coors])] deriving (Show,Generic)
 instance ToJSON Dests where
 	toJSON (Dests m) = object $ map (\ (coors,targetcoorss) ->

@@ -36,8 +36,8 @@ main = do
 gameloop = do
 	igs <- get
 	let pos@Position{..} = igsCurrentPos igs
-	liftIO $ appendFile "msgs.log" $ show igs
-	when ( pColourToMove == igsMyColour igs && pNextMoveNumber == igsMyNextMove igs ) $ do
+	liftIO $ appendFile "msgs.log" $ show igs ++ "\n"
+	when ( pColourToMove == igsMyColour igs && pNextMoveNumber == igsMyNextMove igs && not (igsMyMoveSent igs)) $ do
 		let move:_ = moveGen pos
 		sendMoveG move
 	messageLoopG
