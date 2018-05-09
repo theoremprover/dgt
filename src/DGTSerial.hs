@@ -54,7 +54,7 @@ dGT_CLOCK_SEND_VERSION = 0x09
 fromBCD bcd = (shift bcd (-4)) * 10 + (bcd .&. 0x0f)
 
 dGT2Square = [
-	(1,(White,Ù)),(2,(White,Ü)),(3,(White,Ú)),(4,(White,Û)),(5,(White,Þ)),(6,(White,Ý)),
+	(1,(White,Ù)),(2,(White,Ü)),(3,(White,Ú)),( 4,(White,Û)),( 5,(White,Þ)),( 6,(White,Ý)),
 	(7,(Black,Ù)),(8,(Black,Ü)),(9,(Black,Ú)),(10,(Black,Û)),(11,(Black,Þ)),(12,(Black,Ý)) ]
 
 lookupDGT2Square c = lookup c dGT2Square

@@ -42,15 +42,17 @@ import           System.Random
 import           Wuss
 import System.Clock
 import Control.Concurrent.MVar.Lifted
+import Control.Concurrent.Chan.Lifted
 
 import           Chess200
 import           FEN
 import           LichessInterface
-
+import MainChan
 
 data LichessState = LichessState {
 	clientID      :: String,
-	lisAuthCookie :: String } deriving Show
+	lisAuthCookie :: String,
+	mainChan      :: Chan ChanMsg } deriving Show
 
 type LichessM a = StateT LichessState IO a
 
@@ -85,7 +87,7 @@ lichessRequestL method host path querystring headers = do
 	return (status,val)
 
 withLoginL :: String -> String -> (User -> LichessM a) -> IO a
-withLoginL username password lichessm = withSocketsDo $ do
+withLoginL chan username password lichessm = withSocketsDo $ do
 	writeFile "msgs.log" ""
 	(response,user::User) <- rawLichessRequest "POST" "lichess.org" "/login" [("username",Just username),("password",Just password)] []
 	let Status{..} = getResponseStatus response

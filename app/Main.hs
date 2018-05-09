@@ -20,15 +20,23 @@ import Control.Monad.Loops
 import Control.Monad.Trans.State.Strict (get,gets)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad (when)
+import Control.Concurrent.Chan.Lifted
 
 import DGTSerial
 import Chess200
 import Lichess
 import LichessInterface
 
+
+type MainChan = Chan ChanMsg
+data ChanMsg = LichessMsg LichessMsg | DGTMsg Move deriving (Show)
+
+
 main = do
+	chan <- newChan
+	fork $ dgtThread chan
 	pw <- readFile "pw.txt"
-	withLoginL "Threetee" pw $ \ user -> do
+	withLoginL chan "Threetee" pw $ \ user -> do
 		case nowPlaying (user::User) of
 			Just (game:_) -> joinGameL (gameId game) gameloop
 			_             -> startGameL Nothing (Just White) gameloop
@@ -46,6 +54,21 @@ gameloop = do
 		True  -> gameloop
 		False -> liftIO $ putStrLn "GAME END."
 
+dgtThread chan = do
+	comport <- readFile "dgtcom.txt"
+	board <- getBoard
+	let pos = initialPosition { pBoard = board }
+	withDGT comport $ dgtloop pos
+
+	where
+
+	dgtloop pos = do
+		move <- getMoveDGT pos
+		writeChan chan $ DGTMsg move
+		liftIO $ putStrLn $ "writeChan " ++ show move
+		dgtloop $ doMove pos move
+
+{-
 main2 = do
 	serialport:args <- getArgs
 	withDGT serialport $ do
@@ -76,3 +99,4 @@ main2 = do
 						getMoveDGT pos'
 
 					loop maxdepth (doMove pos' computer_move)
+-}
