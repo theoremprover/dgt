@@ -1,4 +1,4 @@
-{-# LANGUAGE RecordWildCards,TupleSections #-}
+{-# LANGUAGE RecordWildCards,TupleSections,FlexibleContexts #-}
 {-# OPTIONS_GHC -fno-warn-tabs #-}
 
 module DGTSerial where
@@ -64,13 +64,13 @@ type DGTM a = SharedStateT SerialPort IO a
 
 sendDGT :: Char -> [Int] -> DGTM ()
 sendDGT msg_id msg = do
-	s <- get
+	s <- sharedGet
 	n <- liftIO $ send s (BS.pack $ msg_id : map chr msg)
 	when (length msg + 1 /= n) $ error $ printf "Sending %s" (show msg)
 	return ()
 
 recvDGT time_out = do
-	s <- get
+	s <- sharedGet
 	mb_header_bs <- liftIO $ System.Timeout.timeout time_out $ rec_part s 3
 	case mb_header_bs of
 		Nothing -> return Nothing

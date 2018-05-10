@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# OPTIONS_GHC -fno-warn-tabs #-}
 
 module SharedState (
@@ -7,23 +8,25 @@ module SharedState (
 
 import Control.Concurrent.MVar.Lifted
 import Control.Monad.Trans.State.Strict
+import Control.Monad.Base
+import Control.Monad.Trans.Control
 
 
-type SharedState s = MVar s
-type SharedStateT s m a = StateT (SharedState s) m a
+type SharedState = MVar
+type SharedStateT s m = StateT (SharedState s) m
 
-sharedGet :: Monad m => StateT s m s
+sharedGet :: (MonadBase IO m) => StateT (SharedState s) m s
 sharedGet = do
 	mvar <- get
 	readMVar mvar
 
-sharedGets :: Monad m => (s -> a) -> StateT s m a
+sharedGets :: (MonadBase IO m) => (s -> a) -> SharedStateT s m a
 sharedGets selector = sharedGet >>= return . selector
 
-sharedModify :: Monad m => (s -> s) -> StateT s m ()
+sharedModify :: (MonadBaseControl IO m) => (s -> s) -> SharedStateT s m ()
 sharedModify f = do
 	mvar <- get
 	modifyMVar_ mvar (return . f)
 
-evalSharedStateT :: MonadIO m => StateT (SharedState s) m a -> s -> m a
+evalSharedStateT :: (MonadBase IO m) => SharedStateT s m a -> s -> m a
 evalSharedStateT m s = newMVar s >>= evalStateT m

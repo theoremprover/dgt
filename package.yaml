@@ -50,6 +50,7 @@ dependencies:
 - monad-control
 - enclosed-exceptions
 - clock
+- transformers-base
 
 library:
   source-dirs: src

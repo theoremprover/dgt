@@ -41,8 +41,8 @@ import           Network.WebSockets.Stream
 import           System.Random
 import           Wuss
 import System.Clock
-import Control.Concurrent.MVar.Lifted
-import Control.Concurrent.Chan.Lifted
+--import Control.Concurrent.MVar.Lifted
+--import Control.Concurrent.Chan.Lifted
 
 import           Chess200
 import           FEN
@@ -51,10 +51,9 @@ import SharedState
 
 data LichessState = LichessState {
 	clientID      :: String,
-	lisAuthCookie :: String,
-	mainChan      :: Chan ChanMsg } deriving Show
+	lisAuthCookie :: String } deriving Show
 
-type LichessM a = StateT (SharedState LichessState) IO a
+type LichessM a = SharedStateT LichessState IO a
 
 rawLichessRequest :: (FromJSON val,MonadIO m) => BS.ByteString -> BS.ByteString -> String -> [(String,Maybe String)] -> [(String,String)] -> m (Network.HTTP.Conduit.Response BS.ByteString,val)
 rawLichessRequest method host path querystring headers = do
@@ -79,7 +78,7 @@ rawLichessRequest method host path querystring headers = do
 
 lichessRequestL :: (FromJSON val) => BS.ByteString -> BS.ByteString -> String -> [(String,Maybe String)] -> [(String,String)] -> LichessM (Status,val)
 lichessRequestL method host path querystring headers = do
-	authcookie <- gets lisAuthCookie
+	authcookie <- sharedGets lisAuthCookie
 	(response,val) <- rawLichessRequest method host path querystring (("Cookie",authcookie):headers)
 	let status = getResponseStatus response
 	liftIO $ BS.putStrLn $ statusMessage status
@@ -87,7 +86,7 @@ lichessRequestL method host path querystring headers = do
 	return (status,val)
 
 withLoginL :: String -> String -> (User -> LichessM a) -> IO a
-withLoginL chan username password lichessm = withSocketsDo $ do
+withLoginL username password lichessm = withSocketsDo $ do
 	writeFile "msgs.log" ""
 	(response,user::User) <- rawLichessRequest "POST" "lichess.org" "/login" [("username",Just username),("password",Just password)] []
 	let Status{..} = getResponseStatus response
@@ -97,7 +96,7 @@ withLoginL chan username password lichessm = withSocketsDo $ do
 			liftIO $ putStrLn "OK, logged in."
 			let [Cookie{..}] = destroyCookieJar $ responseCookieJar response
 			clientid <- forM [1..10] $ \ _ -> liftIO $ getStdRandom (randomR ('a','z'))
-			evalStateT (lichessm user) $ LichessState {
+			evalSharedStateT (lichessm user) $ LichessState {
 				clientID      = clientid,
 				lisAuthCookie = BS.unpack cookie_name ++ "=" ++ BS.unpack cookie_value }
 
@@ -120,7 +119,7 @@ joinGameL gameid ingamem = do
 	(status@Status{..},gamedata) <- lichessRequestL "GET" "lichess.org" ("/"++gameid) [] []
 	inGameL gamedata ingamem
 
-type InGameM a = StateT (MVar InGameState) (StateT LichessState IO) a
+type InGameM a = SharedStateT InGameState (SharedStateT LichessState IO) a
 
 data InGameState = InGameState {
 	igsConnection     :: WS.Connection,
@@ -144,7 +143,7 @@ inGameL gamedata ingamem = do
 		socketurl     = LichessInterface.round (url gamedata)
 		mycolour      = player (cur_game::CreatedGame)
 	liftIO $ appendFile "msgs.log" (show gamedata ++ "\n")
-	LichessState{..} <- get
+	LichessState{..} <- sharedGet
 	let path = socketurl ++ "/socket/v2?sri=" ++ clientID
 	liftIO $ putStrLn $ "path=" ++ path
 	let
@@ -153,13 +152,13 @@ inGameL gamedata ingamem = do
 	liftIO $ print headers
 	context <- liftIO $ initConnectionContext
 	connection <- liftIO $ connectTo context $ ConnectionParams {
-		connectionHostname = host,
-		connectionPort     = port,
+		connectionHostname  = host,
+		connectionPort      = port,
 		connectionUseSecure = Just $ TLSSettingsSimple {
 			settingDisableCertificateValidation = False,
 			settingDisableSession               = False,
 			settingUseServerName                = False },
-		connectionUseSocks = Nothing }
+		connectionUseSocks  = Nothing }
 	stream <- liftIO $ makeStream
 		(fmap Just (connectionGetChunk connection))
 		(maybe (return ()) (connectionPut connection . BSL.toStrict))

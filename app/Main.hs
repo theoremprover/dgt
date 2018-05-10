@@ -45,23 +45,25 @@ main = do
 
 lichessThread inputchan outputchan = do
 	pw <- readFile "pw.txt"
-	withLoginL inputchan outputchan "Threetee" pw $ \ user -> do
+	withLoginL "Threetee" pw $ \ user -> do
 		case nowPlaying (user::User) of
 			Just (game:_) -> joinGameL (gameId game) gameloop
 			_             -> startGameL Nothing (Just White) gameloop
 
-gameloop = do
-	igs <- igsGet
-	let pos@Position{..} = igsCurrentPos igs
-	liftIO $ appendFile "msgs.log" $ show igs ++ "\n"
-	when ( pColourToMove == igsMyColour igs && pNextMoveNumber == igsMyNextMove igs && not (igsMyMoveSent igs)) $ do
-		let move:_ = moveGen pos
-		sendMoveG move
-	messageLoopG
-	inprogress <- igsGets igsGameInProgress
-	case inprogress of
-		True  -> gameloop
-		False -> liftIO $ putStrLn "GAME END."
+	where
+
+	gameloop = do
+		igs <- sharedGet
+		let pos@Position{..} = igsCurrentPos igs
+		liftIO $ appendFile "msgs.log" $ show igs ++ "\n"
+		when ( pColourToMove == igsMyColour igs && pNextMoveNumber == igsMyNextMove igs && not (igsMyMoveSent igs)) $ do
+			let move:_ = moveGen pos
+			sendMoveG move
+		messageLoopG
+		inprogress <- sharedGets igsGameInProgress
+		case inprogress of
+			True  -> gameloop
+			False -> liftIO $ putStrLn "GAME END."
 
 data DGTCommand = WaitForMove Move deriving Show
 
