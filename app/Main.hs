@@ -29,14 +29,23 @@ import LichessInterface
 
 
 type MainChan = Chan ChanMsg
-data ChanMsg = LichessMsg LichessMsg | DGTMsg Move deriving (Show)
-
+data MainChanMsg =
+	LichessMsg LichessMsg |
+	DGTMsg Move
+	deriving (Show)
 
 main = do
-	chan <- newChan
-	fork $ dgtThread chan
+	fromChan <- newChan
+
+	toDgtChan <- newChan
+	fork $ dgtThread toDgtChan fromChan
+
+	toLichessChan <- newChan
+	fork $ lichessThread toLichessChan fromChan
+
+lichessThread inputchan outputchan = do
 	pw <- readFile "pw.txt"
-	withLoginL chan "Threetee" pw $ \ user -> do
+	withLoginL inputchan outputchan "Threetee" pw $ \ user -> do
 		case nowPlaying (user::User) of
 			Just (game:_) -> joinGameL (gameId game) gameloop
 			_             -> startGameL Nothing (Just White) gameloop
@@ -54,19 +63,28 @@ gameloop = do
 		True  -> gameloop
 		False -> liftIO $ putStrLn "GAME END."
 
-dgtThread chan = do
+data DGTCommand = WaitForMove Move deriving Show
+
+dgtThread inputchan outputchan = do
 	comport <- readFile "dgtcom.txt"
 	board <- getBoard
 	let pos = initialPosition { pBoard = board }
-	withDGT comport $ dgtloop pos
+	withDGT comport $ do
+		fork $ listen_main
+		listen_dgt pos
 
 	where
 
-	dgtloop pos = do
+	listen_main = do
+		command <- readChan inputchan
+		case command of
+			WaitForMove move -> 
+
+	listen_dgt pos = do
 		move <- getMoveDGT pos
-		writeChan chan $ DGTMsg move
-		liftIO $ putStrLn $ "writeChan " ++ show move
-		dgtloop $ doMove pos move
+		writeChan outputchan $ DGTMsg move
+		liftIO $ putStrLn $ "dgtThread writeChan " ++ show move
+		listen_dgt $ doMove pos move
 
 {-
 main2 = do

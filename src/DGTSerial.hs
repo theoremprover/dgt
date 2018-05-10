@@ -8,13 +8,14 @@ import System.Hardware.Serialport
 import System.Timeout
 import Control.Monad
 import Control.Monad.IO.Class
-import Control.Monad.Trans.State.Strict
+--import Control.Monad.Trans.State.Strict
 import Text.Printf
 import Data.Char
 import Data.Array
 import Data.Bits
 import qualified Data.Set as Set
 
+import SharedState
 import Chess200
 
 
@@ -59,7 +60,7 @@ dGT2Square = [
 
 lookupDGT2Square c = lookup c dGT2Square
 
-type DGTM a = StateT SerialPort IO a
+type DGTM a = SharedStateT SerialPort IO a
 
 sendDGT :: Char -> [Int] -> DGTM ()
 sendDGT msg_id msg = do
@@ -87,8 +88,8 @@ recvDGT time_out = do
 				msg_rest <- rec_part s (rest - BS.length msg_part)
 				return $ BS.append msg_part msg_rest
 
-withDGT serialport proc = withSerial serialport serialportSettings $
-	evalStateT (sendDGT dGT_SEND_RESET [] >> proc)
+withDGT serialport proc = withSerial serialport serialportSettings $ 
+	evalSharedStateT (sendDGT dGT_SEND_RESET [] >> proc)
 
 getBoard :: DGTM Board
 getBoard = do
