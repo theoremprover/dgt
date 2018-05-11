@@ -207,32 +207,9 @@ instance FromJSON LichessMsg where
 		o .:  "t" <*>
 		explicitParseFieldMaybe (parse_payload (HM.lookup "t" o)) o "d"
 
-{-
-receiveG: {"t":"b","d":[
-	{"v":8,"t":"move","d":{
-		"uci":"c5f2",
-		"san":"Bxf2#",
-		"fen":"r1b1k1nr/ppp2ppp/2n1pq2/3p4/8/P7/RPPPPbPP/1NBQKBNR",
-		"ply":12,
-		"dests":null,
-		"status":{"id":30,"name":"mate"},
-		"winner":"black","check":true}},
-	{"v":9,"t":"end","d":"black"},
-	{"v":10,"t":"endData","d":{"winner":"black","status":{"id":30,"name":"mate"}}}
-]}
-
-{"v":9,"t":"move","d":{
-	"uci":"h2h3",
-	"san":"h3",
-	"fen":"r2qkbnr/ppp2ppp/2np4/1B2p3/4P1b1/P4N1P/1PPP1PP1/RNBQK2R",
-	"ply":9,
-	"dests":{"a8":"b8c8","f8":"e7","e8":"e7d7","f7":"f6f5","d8":"d7c8b8e7f6g5h4","g7":"g6g5","b7":"b6","a7":"a6a5","d6":"d5","h7":"h6h5","g4":"f5e6d7c8h5f3h3","g8":"f6h6e7"
-	}}}
--}
-
 parse_payload :: Maybe Value -> (Value -> Parser LichessMsgPayload)
 parse_payload (Just (String payload_type)) = case payload_type of
-	"move"    -> withObject "POpponentMove" $ \ o -> PLiMove <$> parseJSON (Object o)
+	"move"    -> withObject "PLiMove" $ \ o -> PLiMove <$> parseJSON (Object o)
 	"b"       -> withArray  "PMessages" $ \ a -> PMessages <$> parseJSON (Array a)
 	"crowd"   -> withObject "PCrowd" $ \ o -> PCrowd <$> parseJSON (Object o)
 	"end"     -> withText   "Colour" $ \ t -> PEnd <$> parseJSON (String t)

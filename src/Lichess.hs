@@ -16,8 +16,8 @@ import           Control.Concurrent.Lifted        as L
 import           Control.Exception
 import           Control.Exception.Enclosed
 import           Control.Monad
-import           Control.Monad.Loops (untilM_)
-import           Control.Monad.Trans.Class        (lift)
+--import           Control.Monad.Loops (untilM_)
+--import           Control.Monad.Trans.Class        (lift)
 import           Control.Monad.IO.Class           (MonadIO, liftIO)
 import           Control.Monad.Trans.Control
 --import           Control.Monad.Trans.State.Strict
@@ -44,16 +44,18 @@ import System.Clock
 --import Control.Concurrent.MVar.Lifted
 --import Control.Concurrent.Chan.Lifted
 
-import           Chess200
-import           FEN
-import           LichessInterface
+import Log
+import Chess200
+import FEN
+import LichessInterface
 import SharedState
+import Confluence
 
 data LichessState = LichessState {
 	clientID      :: String,
 	lisAuthCookie :: String } deriving Show
 
-type LichessM a = SharedStateT LichessState IO a
+type LichessM = SharedStateT LichessState IO
 
 rawLichessRequest :: (FromJSON val,MonadIO m) => BS.ByteString -> BS.ByteString -> String -> [(String,Maybe String)] -> [(String,String)] -> m (Network.HTTP.Conduit.Response BS.ByteString,val)
 rawLichessRequest method host path querystring headers = do
@@ -87,7 +89,6 @@ lichessRequestL method host path querystring headers = do
 
 withLoginL :: String -> String -> (User -> LichessM a) -> IO a
 withLoginL username password lichessm = withSocketsDo $ do
-	writeFile "msgs.log" ""
 	(response,user::User) <- rawLichessRequest "POST" "lichess.org" "/login" [("username",Just username),("password",Just password)] []
 	let Status{..} = getResponseStatus response
 	case statusCode == 200 of
@@ -119,17 +120,17 @@ joinGameL gameid ingamem = do
 	(status@Status{..},gamedata) <- lichessRequestL "GET" "lichess.org" ("/"++gameid) [] []
 	inGameL gamedata ingamem
 
-type InGameM a = SharedStateT InGameState (SharedStateT LichessState IO) a
+type InGameM = SharedStateT InGameState (SharedStateT LichessState IO)
 
 data InGameState = InGameState {
 	igsConnection     :: WS.Connection,
-	igsMyColour       :: Colour,
-	igsCurrentPos     :: Position,
+--	igsMyColour       :: Colour,
+--	igsCurrentPos     :: Position,
 	igsSocketURL      :: String,
 	igsCurrentGameID  :: String,
-	igsMyNextMove     :: Int,
+--	igsMyNextMove     :: Int,
 	igsGameInProgress :: Bool,
-	igsMyMoveSent     :: Bool,
+--	igsMyMoveSent     :: Bool,
 	igsLastPing       :: Maybe TimeSpec }
 	deriving Show
 instance Show WS.Connection where
@@ -142,7 +143,7 @@ inGameL gamedata ingamem = do
 		currentgameid = LichessInterface.id (cur_game :: CreatedGame)
 		socketurl     = LichessInterface.round (url gamedata)
 		mycolour      = player (cur_game::CreatedGame)
-	liftIO $ appendFile "msgs.log" (show gamedata ++ "\n")
+	logMsg $ show gamedata ++ "\n"
 	LichessState{..} <- sharedGet
 	let path = socketurl ++ "/socket/v2?sri=" ++ clientID
 	liftIO $ putStrLn $ "path=" ++ path
@@ -163,7 +164,7 @@ inGameL gamedata ingamem = do
 		(fmap Just (connectionGetChunk connection))
 		(maybe (return ()) (connectionPut connection . BSL.toStrict))
 	conn <- liftIO $ WS.runClientWithStream stream host path options headers return
-	liftIO $ appendFile "msgs.log" $ "FEN: " ++ fen (cur_game::CreatedGame)
+	logMsg $ "FEN: " ++ fen (cur_game::CreatedGame)
 	let
 		Right pos@Position{..} = fromFEN (fen (cur_game::CreatedGame))
 		mynextmove = pNextMoveNumber + if pColourToMove == Black && mycolour == White then 1 else 0
@@ -179,7 +180,7 @@ inGameL gamedata ingamem = do
 
 pingG :: InGameM ()
 pingG = do
-	mb_lastping <- sharedGets igsLastPing
+	mb_lastping <- gets igsLastPing
 	when (isNothing mb_lastping) $ do
 		sendG $ LichessMsg (Just 0) "p" Nothing
 		now <- liftIO $ getTime Monotonic
@@ -188,15 +189,14 @@ pingG = do
 sendG :: LichessMsg -> InGameM ()
 sendG lichessmsg = do
 	liftIO $ putStrLn $ "sendG " ++ show (toJSON lichessmsg)
-	conn <- sharedGets igsConnection
+	conn <- gets igsConnection
 	liftIO $ WS.sendTextData conn lichessmsg
-	sharedModify $ \ s -> s { igsMyMoveSent = True }
-	liftIO $ do
-		appendFile "msgs.log" $ "SENT: " ++ show lichessmsg ++ "\n"
+--	sharedModify $ \ s -> s { igsMyMoveSent = True }
+	logMsg $ "SENT: " ++ show lichessmsg ++ "\n"
 
 receiveG :: InGameM LichessMsg
 receiveG = do
-	conn <- sharedGets igsConnection
+	conn <- gets igsConnection
 	datamsg <- liftIO $ receiveDataMessage conn
 	let (lichessmsg,x) :: (LichessMsg,String) = case datamsg of
 		Text   x -> (fromLazyByteString x,BSL8.unpack x)
@@ -204,54 +204,76 @@ receiveG = do
 --	liftIO $ putStrLn $ "receiveG: " ++ x
 --	lichessmsg <- liftIO $ WS.receiveData conn
 --	liftIO $ putStrLn $ "receiveG: " ++ show lichessmsg
-	liftIO $ do
-		appendFile "msgs.log" $ "RECV = " ++ x ++ "\n"
-		appendFile "msgs.log" $ "RECV: " ++ show lichessmsg ++ "\n"
+	logMsg $ "RECV = " ++ x ++ "\n"
+	logMsg $ "RECV: " ++ show lichessmsg ++ "\n"
 	return lichessmsg
 
 sendMoveG :: Move -> InGameM ()
 sendMoveG Move{..} = do
 	sendG $ LichessMsg Nothing "move" $ Just $ PMyMove $ MyMove $ MoveFromTo moveFrom moveTo movePromote
 
-messageLoopG = do
-	msg <- receiveG
-	breakloop <- handleMessageG msg
-	when (not breakloop) messageLoopG
-
-handleMessageG (LichessMsg _ t mb_payload) = do
-	case (t,mb_payload) of
-		(_,Just (PMessages msgs)) -> sequence_ $ map handleMessageG msgs
-		(_,Just (PLiMove limove)) -> do
-			Position{..} <- sharedGets igsCurrentPos
-			when (pNextMoveNumber*2-1 + (if pColourToMove==White then 0 else 1) == ply (limove::LiMove)) $ do
-				doMoveG limove
-				sharedModify $ \ s -> s { igsMyMoveSent = False }
-		("n",_) -> do
-			now <- liftIO $ getTime Monotonic
-			mb_lastping <- sharedGets igsLastPing
-			case mb_lastping of
-				Just lastping -> do
-					let lag_ns = toNanoSecs $ diffTimeSpec now lastping
-					liftIO $ putStrLn $ "### Lag = " ++ show (div lag_ns 1000000) ++ " ms"
-					sharedModify $ \ s -> s { igsLastPing = Nothing }
-				Nothing -> return ()
-		(_,Just (PEndData _))     -> sharedModify $ \ s -> s { igsGameInProgress = False }
-		_                         -> return ()
-	InGameState{..} <- sharedGet
-	let pos@Position{..} = igsCurrentPos
-	let nowmetomove = pColourToMove==igsMyColour && pNextMoveNumber==igsMyNextMove
-	return nowmetomove
-	
+{-
 doMoveG :: LiMove -> InGameM ()
 doMoveG limove = do
 	let MoveFromTo from to mb_promote = uci (limove::LiMove)
-	pos <- sharedGets igsCurrentPos
+	pos <- gets igsCurrentPos
 	let move = case [ move | move@Move{..} <- moveGen pos, moveFrom==from, moveTo==to, movePromote==mb_promote ] of
 		move:_ -> move
 		_ -> error $ "limove=" ++ show limove ++ "\nmoveGen pos = " ++ show (moveGen pos)
 	sharedModify $ \ s -> s {
 		igsCurrentPos = doMove (igsCurrentPos s) move,
 		igsMyNextMove = igsMyNextMove s + if pColourToMove (igsCurrentPos s) == igsMyColour s then 1 else 0 }
-	igs <- sharedGet
+	igs <- get
 	liftIO $ print (igsCurrentPos igs)
-	liftIO $ appendFile "msgs.log" $ "MOVED:\n" ++ show igs ++ "\n"
+	logMsg $ "MOVED:\n" ++ show igs ++ "\n"
+-}
+
+data LichessCommand =
+	SendMove Move
+	deriving Show
+
+listenForCommandsG inputchan = forever $ do
+	command <- readChan inputchan
+	liftIO $ putStrLn $ "listenForCommandsG: Got " ++ show command
+	case command of
+		SendMove move -> sendMoveG move
+
+listenForLichessG outputchan = forever $ receiveG >>= handlemsg
+	where
+	handlemsg (LichessMsg _ t mb_payload) = do
+		mb_msg <- case (t,mb_payload) of
+			(_,Just (PMessages msgs)) -> sequence_ (map handlemsg msgs) >> return Nothing
+			(_,Just (PLiMove limove)) -> return $ Just $ LichessMove $ uci (limove::LiMove)
+{-
+				Position{..} <- gets igsCurrentPos
+				when (pNextMoveNumber*2-1 + (if pColourToMove==White then 0 else 1) == ply (limove::LiMove)) $ do
+					doMoveG limove
+					sharedModify $ \ s -> s { igsMyMoveSent = False }
+-}
+			("n",_) -> do
+				now <- liftIO $ getTime Monotonic
+				mb_lastping <- sharedGets igsLastPing
+				case mb_lastping of
+					Just lastping -> do
+						let lag_ns = toNanoSecs $ diffTimeSpec now lastping
+						liftIO $ putStrLn $ "### Lag = " ++ show (div lag_ns 1000000) ++ " ms"
+						sharedModify $ \ s -> s { igsLastPing = Nothing }
+					Nothing -> return ()
+				return Nothing
+			(_,Just (PEndData enddata))     -> do
+				sharedModify $ \ s -> s { igsGameInProgress = False }
+				return $ Just LichessGameEnd
+			_ -> return Nothing
+
+		case mb_msg of
+			Nothing  -> return ()
+			Just msg -> do
+				writeChan outputchan msg
+				logMsg $ "messageLoopG: writeChan " ++ show msg
+
+{-
+		InGameState{..} <- get
+		let pos@Position{..} = igsCurrentPos
+		let nowmetomove = pColourToMove==igsMyColour && pNextMoveNumber==igsMyNextMove
+		return nowmetomove
+-}	

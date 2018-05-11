@@ -8,13 +8,14 @@ import System.Hardware.Serialport
 import System.Timeout
 import Control.Monad
 import Control.Monad.IO.Class
---import Control.Monad.Trans.State.Strict
 import Text.Printf
 import Data.Char
 import Data.Array
 import Data.Bits
 import qualified Data.Set as Set
+import Control.Monad.Loops
 
+import Confluence
 import SharedState
 import Chess200
 
@@ -60,7 +61,7 @@ dGT2Square = [
 
 lookupDGT2Square c = lookup c dGT2Square
 
-type DGTM a = SharedStateT SerialPort IO a
+type DGTM = SharedStateT SerialPort IO
 
 sendDGT :: Char -> [Int] -> DGTM ()
 sendDGT msg_id msg = do
@@ -141,6 +142,12 @@ recvParseMsgDGT time_out = do
 				zip [ (f,r) | r <- [1..8], f <- [8,7 .. 1] ] $ map lookupDGT2Square msg
 			_ -> OtherMsg msg_id msg
 
+waitFieldUpdateDGT = do
+	Just msg <- recvParseMsgDGT (-1)
+	case msg of
+		FieldUpdate coors square -> return (coors,square)
+		_ -> waitFieldUpdateDGT
+
 getMoveDGT :: Position -> DGTM Move
 getMoveDGT pos = do
 	sendDGT dGT_SEND_UPDATE_BRD []
@@ -149,18 +156,41 @@ getMoveDGT pos = do
 	legal_moves = moveGen pos
 	lookup_move = zip (map (pBoard . doMove pos) legal_moves) legal_moves
 	loop board = do
-		Just msg <- recvParseMsgDGT (-1)
-		case msg of
-			FieldUpdate coors square -> do
---				liftIO $ print msg
-				let board' = board // [(coors,square)]
-				case lookup board' lookup_move of
-					Nothing   -> loop board'
-					Just move -> do
---						liftIO $ putStrLn "Waiting..."
-						mb_msg' <- recvParseMsgDGT (500 * 1000)  -- Wait 500ms if move continues...
-						case mb_msg' of
-							Nothing -> return move
-							Just (FieldUpdate coors square) -> loop $ board' // [(coors,square)]
-							_ -> loop board'
-			_ -> loop board
+		(coors,square) <- waitFieldUpdateDGT
+--		liftIO $ print msg
+		let board' = board // [(coors,square)]
+		case lookup board' lookup_move of
+			Nothing   -> loop board'
+			Just move -> do
+--				liftIO $ putStrLn "Waiting..."
+				mb_msg' <- recvParseMsgDGT (500 * 1000)  -- Wait 500ms if move continues...
+				case mb_msg' of
+					Nothing -> return move
+					Just (FieldUpdate coors square) -> loop $ board' // [(coors,square)]
+					_ -> loop board'
+
+data DGTCommand =
+	WaitForThisMoveDone Position Move |
+	WaitForPos Position |
+	WaitForMove Position
+	deriving Show
+
+listenForCommandsDGT inputchan outputchan = forever $ do
+	command <- readChan inputchan
+	msg <- case command of
+		WaitForThisMoveDone pos move -> do
+			iterateUntil (==move) $ do
+				displayTextDGT (show move) True
+				getMoveDGT pos
+			return DGTMoveDone
+		WaitForPos pos -> do
+			iterateUntil (== pBoard pos) $ do
+				displayTextDGT "Setup" True
+				waitFieldUpdateDGT
+				getBoard
+			return DGTPositionIsSetup
+		WaitForMove pos -> do
+			move <- getMoveDGT pos
+			return $ DGTMove move
+	writeChan outputchan msg
+	liftIO $ putStrLn $ "listenForCommandsDGT: " ++ show msg

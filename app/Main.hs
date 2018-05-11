@@ -9,49 +9,58 @@ stack exec dgt-exe "COM13"
 stack ghci
 -}
 
-import System.Environment
+--import System.Environment
 import Control.Monad.IO.Class
-import Data.Char
-import Data.Bits
+--import Data.Char
+--import Data.Bits
 import Text.Printf
 import System.IO
-import Text.Printf
 import Control.Monad.Loops
-import Control.Monad.Trans.State.Strict (get,gets)
-import Control.Monad.Trans.Class (lift)
-import Control.Monad (when)
-import Control.Concurrent.Chan.Lifted
+--import Control.Monad.Trans.State.Strict (get,gets)
+--import Control.Monad.Trans.Class (lift)
+--import Control.Monad (when)
 
+import Log
 import DGTSerial
 import Chess200
 import Lichess
-import LichessInterface
+--import LichessInterface
+import Confluence
 
-
-type MainChan = Chan ChanMsg
-data MainChanMsg =
+data MsgChanMsg =
 	LichessMsg LichessMsg |
-	DGTMsg Move
+	MoveDone |
+	PositionIsSetup |
+	DGTMove Move
 	deriving (Show)
 
 main = do
-	fromChan <- newChan
+	initLog
 
-	toDgtChan <- newChan
-	fork $ dgtThread toDgtChan fromChan
+	msgChan <- newChan
 
-	toLichessChan <- newChan
-	fork $ lichessThread toLichessChan fromChan
+	lichessCmdChan <- newChan
+	fork $ lichessThread lichessCmdChan msgChan
+
+	dgtCmdChan <- newChan
+	fork $ dgtThread dgtCmdChan msgChan
+
+	
 
 lichessThread inputchan outputchan = do
 	pw <- readFile "pw.txt"
 	withLoginL "Threetee" pw $ \ user -> do
 		case nowPlaying (user::User) of
-			Just (game:_) -> joinGameL (gameId game) gameloop
-			_             -> startGameL Nothing (Just White) gameloop
-
+			Just (game:_) -> joinGameL (gameId game) $ listenForLichessG outputchan
+			_             -> startGameL Nothing (Just White) $ listenForLichessG outputchan
+		fork $ listenForCommandsG inputchan
 	where
 
+	listen_main = do
+		command <- readChan inputchan
+		msg <- case command of
+			
+{-
 	gameloop = do
 		igs <- sharedGet
 		let pos@Position{..} = igsCurrentPos igs
@@ -64,30 +73,12 @@ lichessThread inputchan outputchan = do
 		case inprogress of
 			True  -> gameloop
 			False -> liftIO $ putStrLn "GAME END."
-
-data DGTCommand = WaitForMove Move deriving Show
+-}
 
 dgtThread inputchan outputchan = do
 	comport <- readFile "dgtcom.txt"
-	board <- getBoard
-	let pos = initialPosition { pBoard = board }
 	withDGT comport $ do
-		fork $ listen_main
-		listen_dgt pos
-
-	where
-
-	listen_main = do
-		command <- readChan inputchan
-		case command of
-			WaitForMove move -> 
-
-	listen_dgt pos = do
-		move <- getMoveDGT pos
-		writeChan outputchan $ DGTMsg move
-		liftIO $ putStrLn $ "dgtThread writeChan " ++ show move
-		listen_dgt $ doMove pos move
-
+		listenForCommandsDGT inputchan outputchan
 {-
 main2 = do
 	serialport:args <- getArgs
