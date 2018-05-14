@@ -27,58 +27,22 @@ import Lichess
 --import LichessInterface
 import Confluence
 
-data MsgChanMsg =
-	LichessMsg LichessMsg |
-	MoveDone |
-	PositionIsSetup |
-	DGTMove Move
-	deriving (Show)
-
 main = do
 	initLog
 
 	msgChan <- newChan
 
+	pw <- readFile "pw.txt"
 	lichessCmdChan <- newChan
-	fork $ lichessThread lichessCmdChan msgChan
+	fork $ lichessThread "Threetee" pw lichessCmdChan msgChan
 
+	comport <- readFile "dgtcom.txt"
 	dgtCmdChan <- newChan
-	fork $ dgtThread dgtCmdChan msgChan
+	fork $ dgtThread comport dgtCmdChan msgChan
 
 	
 
-lichessThread inputchan outputchan = do
-	pw <- readFile "pw.txt"
-	withLoginL "Threetee" pw $ \ user -> do
-		case nowPlaying (user::User) of
-			Just (game:_) -> joinGameL (gameId game) $ listenForLichessG outputchan
-			_             -> startGameL Nothing (Just White) $ listenForLichessG outputchan
-		fork $ listenForCommandsG inputchan
-	where
 
-	listen_main = do
-		command <- readChan inputchan
-		msg <- case command of
-			
-{-
-	gameloop = do
-		igs <- sharedGet
-		let pos@Position{..} = igsCurrentPos igs
-		liftIO $ appendFile "msgs.log" $ show igs ++ "\n"
-		when ( pColourToMove == igsMyColour igs && pNextMoveNumber == igsMyNextMove igs && not (igsMyMoveSent igs)) $ do
-			let move:_ = moveGen pos
-			sendMoveG move
-		messageLoopG
-		inprogress <- sharedGets igsGameInProgress
-		case inprogress of
-			True  -> gameloop
-			False -> liftIO $ putStrLn "GAME END."
--}
-
-dgtThread inputchan outputchan = do
-	comport <- readFile "dgtcom.txt"
-	withDGT comport $ do
-		listenForCommandsDGT inputchan outputchan
 {-
 main2 = do
 	serialport:args <- getArgs

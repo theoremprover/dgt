@@ -239,16 +239,16 @@ instance ToJSON   EndData
 instance FromJSON EndData
 
 data WinnerOrDraw = WDWinner Colour | WDDraw deriving (Show)
-instance ToJSON MaybeWinner where
-	toJSON = String $ \case
-		WDWinner colour -> toLower $ show colour
+instance ToJSON WinnerOrDraw where
+	toJSON x = String $ case x of
+		WDWinner colour -> T.toLower $ T.pack $ show colour
 		WDDraw          -> "draw"
-instance FromJSON MaybeWinner where
+instance FromJSON WinnerOrDraw where
 	parseJSON = withText "colour or draw" $ \case
-		"draw" -> WDDraw
-		"white" -> WDWinner White
-		"black" -> WDWinner Black
-		unknown -> fail $ "parseJSON: Expected <colour> or \"draw\", got " ++ show unknown
+		"draw" -> pure WDDraw
+		"white" -> pure $ WDWinner White
+		"black" -> pure $ WDWinner Black
+		unknown -> fail $ "parseJSON: Expected <colour> or \"draw\", but got " ++ show unknown
 
 data Crowd = Crowd {
 	white    :: Bool,

@@ -10,6 +10,8 @@ import Control.Concurrent.Chan.Lifted
 import LichessInterface
 import Chess200
 
+type ConfluenceChan = Chan ConfluenceMsg
+
 data ConfluenceMsg =
 	LichessGameStart Position |
 	LichessGameEnd MatchResult |

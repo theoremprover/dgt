@@ -226,9 +226,9 @@ potentialMoves Position{..} = normal_moves ++ castling_moves where
 	base = baseRank pColourToMove
 	square_empty = isNothing . (pBoard!)
 
-data MatchResult = Winner Colour WinReason | Draw DrawReason    deriving Show
-data WinReason   = Resignation | Checkmate                      deriving Show
-data DrawReason  = Fifty_Halfmoves | Stalemate | NoMatePossible deriving Show
+data MatchResult = Winner Colour WinReason | Draw DrawReason             deriving Show
+data WinReason   = Resignation | Checkmate                               deriving Show
+data DrawReason  = Fifty_Halfmoves | Stalemate | NoMatePossible | Agreed deriving Show
 
 type Rating = Float
 mAX         = 10000.0

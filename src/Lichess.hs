@@ -42,7 +42,7 @@ import           System.Random
 import           Wuss
 import System.Clock
 --import Control.Concurrent.MVar.Lifted
---import Control.Concurrent.Chan.Lifted
+import Control.Concurrent.Chan.Lifted
 
 import Log
 import Chess200
@@ -50,6 +50,8 @@ import FEN
 import LichessInterface
 import SharedState
 import Confluence
+
+type LichessChan = Chan LichessCommand
 
 data LichessState = LichessState {
 	clientID      :: String,
@@ -191,7 +193,7 @@ pingG = do
 sendG :: LichessMsg -> InGameM ()
 sendG lichessmsg = do
 	liftIO $ putStrLn $ "sendG " ++ show (toJSON lichessmsg)
-	conn <- gets igsConnection
+	conn <- sharedGets igsConnection
 	liftIO $ WS.sendTextData conn lichessmsg
 --	sharedModify $ \ s -> s { igsMyMoveSent = True }
 	logMsg $ "SENT: " ++ show lichessmsg ++ "\n"
@@ -262,9 +264,11 @@ listenForLichessG outputchan = forever $ receiveG >>= handlemsg
 						sharedModify $ \ s -> s { igsLastPing = Nothing }
 					Nothing -> return ()
 				return Nothing
-			(_,Just (PEndData enddata))     -> do
+			(_,Just (PEndData (EndData winnerordraw gamestatus)))     -> do
 				sharedModify $ \ s -> s { igsGameInProgress = False }
-				return $ Just LichessGameEnd
+				return $ Just $ LichessGameEnd $ case winnerordraw of
+					WDWinner colour -> Winner colour Checkmate  -- TODO: WinReason herausfinden
+					WDDraw          -> Draw NoMatePossible      -- TODO: DrawReason herausfinden
 			_ -> return Nothing
 
 		case mb_msg of
@@ -279,3 +283,31 @@ listenForLichessG outputchan = forever $ receiveG >>= handlemsg
 		let nowmetomove = pColourToMove==igsMyColour && pNextMoveNumber==igsMyNextMove
 		return nowmetomove
 -}	
+
+lichessThread :: String -> String -> Chan LichessCommand -> Chan ConfluenceMsg -> IO ()
+lichessThread username pw inputchan outputchan = do
+	withLoginL username pw $ \ user -> do
+		case nowPlaying (user::User) of
+			Just (game:_) -> joinGameL (gameId game) $ listenForLichessG outputchan
+			_             -> startGameL Nothing (Just White) $ listenForLichessG outputchan
+		fork $ listenForCommandsG inputchan
+	where
+
+	listen_main = do
+		command <- readChan inputchan
+		msg <- case command of
+			
+{-
+	gameloop = do
+		igs <- sharedGet
+		let pos@Position{..} = igsCurrentPos igs
+		liftIO $ appendFile "msgs.log" $ show igs ++ "\n"
+		when ( pColourToMove == igsMyColour igs && pNextMoveNumber == igsMyNextMove igs && not (igsMyMoveSent igs)) $ do
+			let move:_ = moveGen pos
+			sendMoveG move
+		messageLoopG
+		inprogress <- sharedGets igsGameInProgress
+		case inprogress of
+			True  -> gameloop
+			False -> liftIO $ putStrLn "GAME END."
+-}

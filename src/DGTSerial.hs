@@ -14,6 +14,7 @@ import Data.Array
 import Data.Bits
 import qualified Data.Set as Set
 import Control.Monad.Loops
+import Control.Concurrent.Chan.Lifted
 
 import Confluence
 import SharedState
@@ -194,3 +195,8 @@ listenForCommandsDGT inputchan outputchan = forever $ do
 			return $ DGTMove move
 	writeChan outputchan msg
 	liftIO $ putStrLn $ "listenForCommandsDGT: " ++ show msg
+
+dgtThread :: String -> Chan DGTCommand -> ConfluenceChan -> IO () 
+dgtThread comport inputchan outputchan = do
+	withDGT comport $ do
+		listenForCommandsDGT inputchan outputchan
