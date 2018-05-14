@@ -226,17 +226,29 @@ data LichessMsgPayload =
 	deriving (Show,Generic)
 instance ToJSON   LichessMsgPayload where
 	toJSON = \case
-		PLiMove x -> toJSON x
-		PMyMove x -> toJSON x
+		PLiMove x   -> toJSON x
+		PMyMove x   -> toJSON x
 		PMessages x -> toJSON x
-		PCrowd x -> toJSON x
+		PCrowd x    -> toJSON x
 instance FromJSON LichessMsgPayload
 
 data EndData = EndData {
-	winner :: Colour,
+	winner :: WinnerOrDraw,
 	status :: GameStatus } deriving (Show,Generic)
-instance ToJSON   EndData 
+instance ToJSON   EndData
 instance FromJSON EndData
+
+data WinnerOrDraw = WDWinner Colour | WDDraw deriving (Show)
+instance ToJSON MaybeWinner where
+	toJSON = String $ \case
+		WDWinner colour -> toLower $ show colour
+		WDDraw          -> "draw"
+instance FromJSON MaybeWinner where
+	parseJSON = withText "colour or draw" $ \case
+		"draw" -> WDDraw
+		"white" -> WDWinner White
+		"black" -> WDWinner Black
+		unknown -> fail $ "parseJSON: Expected <colour> or \"draw\", got " ++ show unknown
 
 data Crowd = Crowd {
 	white    :: Bool,

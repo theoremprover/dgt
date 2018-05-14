@@ -165,10 +165,12 @@ inGameL gamedata ingamem = do
 		(maybe (return ()) (connectionPut connection . BSL.toStrict))
 	conn <- liftIO $ WS.runClientWithStream stream host path options headers return
 	logMsg $ "FEN: " ++ fen (cur_game::CreatedGame)
+{-
 	let
 		Right pos@Position{..} = fromFEN (fen (cur_game::CreatedGame))
 		mynextmove = pNextMoveNumber + if pColourToMove == Black && mycolour == White then 1 else 0
-	flip evalSharedStateT (InGameState conn mycolour pos socketurl currentgameid mynextmove True False Nothing) $ do
+-}
+	flip evalSharedStateT (InGameState conn socketurl currentgameid True Nothing) $ do
 		L.fork $ ( do
 			forever $ do
 				pingG
@@ -180,7 +182,7 @@ inGameL gamedata ingamem = do
 
 pingG :: InGameM ()
 pingG = do
-	mb_lastping <- gets igsLastPing
+	mb_lastping <- sharedGets igsLastPing
 	when (isNothing mb_lastping) $ do
 		sendG $ LichessMsg (Just 0) "p" Nothing
 		now <- liftIO $ getTime Monotonic
@@ -196,7 +198,7 @@ sendG lichessmsg = do
 
 receiveG :: InGameM LichessMsg
 receiveG = do
-	conn <- gets igsConnection
+	conn <- sharedGets igsConnection
 	datamsg <- liftIO $ receiveDataMessage conn
 	let (lichessmsg,x) :: (LichessMsg,String) = case datamsg of
 		Text   x -> (fromLazyByteString x,BSL8.unpack x)
