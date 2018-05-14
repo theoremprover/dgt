@@ -7,6 +7,7 @@ module SharedState (
 	) where
 
 import Control.Concurrent.MVar.Lifted
+import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Reader
 import Control.Monad.Base
 import Control.Monad.Trans.Control
@@ -20,12 +21,24 @@ sharedGets :: (MonadBase IO m) => (s -> a) -> SharedStateT s m a
 sharedGets selector = sharedGet >>= return . selector
 
 sharedModify :: (MonadBaseControl IO m) => (s -> s) -> SharedStateT s m ()
-sharedModify f = withSharedState (return . f)
+sharedModify f = sharedModifyM_ (return . f)
 
-withSharedState :: (MonadBaseControl IO m) => (s -> SharedStateT s m s) -> SharedStateT s m ()
-withSharedState m = do
+sharedModifyM_ :: (MonadBaseControl IO m) => (s -> SharedStateT s m s) -> SharedStateT s m ()
+sharedModifyM_ m = do
 	mvar <- ask
 	modifyMVar_ mvar m
+	
+withSharedState :: (MonadBaseControl IO m) => (s -> m a) -> SharedStateT s m a
+withSharedState m_outer = do
+	s <- sharedGet
+	lift $ m_outer s
+
+withSharedStateAtomically :: (MonadBaseControl IO m) => (s -> m ()) -> SharedStateT s m ()
+withSharedStateAtomically m_outer = do
+	mvar <- ask
+	withMVar mvar $ \ s -> do
+		lift $ m_outer s
+		return ()
 
 evalSharedStateT :: (MonadBase IO m) => SharedStateT s m a -> s -> m a
 evalSharedStateT m s = newMVar s >>= runReaderT m

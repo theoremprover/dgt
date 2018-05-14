@@ -12,7 +12,7 @@
 
 module Lichess where
 
-import           Control.Concurrent.Lifted        as L
+import           Control.Concurrent.Lifted
 import           Control.Exception
 import           Control.Exception.Enclosed
 import           Control.Monad
@@ -173,10 +173,10 @@ inGameL gamedata ingamem = do
 		mynextmove = pNextMoveNumber + if pColourToMove == Black && mycolour == White then 1 else 0
 -}
 	flip evalSharedStateT (InGameState conn socketurl currentgameid True Nothing) $ do
-		L.fork $ ( do
+		fork $ ( do
 			forever $ do
 				pingG
-				L.threadDelay (1500*1000) )
+				threadDelay (1500*1000) )
 			`catchIO` (const $ return ())
 		ret <- ingamem
 		liftIO $ sendClose conn ()
@@ -184,29 +184,27 @@ inGameL gamedata ingamem = do
 
 pingG :: InGameM ()
 pingG = do
-	mb_lastping <- sharedGets igsLastPing
-	when (isNothing mb_lastping) $ do
+	InGameState{..} <- sharedGet
+	when (isNothing igsLastPing) $ do
 		sendG $ LichessMsg (Just 0) "p" Nothing
 		now <- liftIO $ getTime Monotonic
 		sharedModify $ \ s -> s { igsLastPing = Just now }
 
 sendG :: LichessMsg -> InGameM ()
-sendG lichessmsg = do
+sendG lichessmsg = withSharedStateAtomically $ \ InGameState{..} -> do
 	liftIO $ putStrLn $ "sendG " ++ show (toJSON lichessmsg)
-	conn <- sharedGets igsConnection
-	liftIO $ WS.sendTextData conn lichessmsg
+	liftIO $ WS.sendTextData igsConnection lichessmsg
 --	sharedModify $ \ s -> s { igsMyMoveSent = True }
 	logMsg $ "SENT: " ++ show lichessmsg ++ "\n"
 
 receiveG :: InGameM LichessMsg
-receiveG = do
-	conn <- sharedGets igsConnection
-	datamsg <- liftIO $ receiveDataMessage conn
+receiveG = withSharedState $ \ InGameState{..} -> do
+	datamsg <- liftIO $ receiveDataMessage igsConnection
 	let (lichessmsg,x) :: (LichessMsg,String) = case datamsg of
 		Text   x -> (fromLazyByteString x,BSL8.unpack x)
 		Binary x -> (fromLazyByteString x,BSL8.unpack x)
 --	liftIO $ putStrLn $ "receiveG: " ++ x
---	lichessmsg <- liftIO $ WS.receiveData conn
+--	lichessmsg <- liftIO $ WS.receiveData igsConnection
 --	liftIO $ putStrLn $ "receiveG: " ++ show lichessmsg
 	logMsg $ "RECV = " ++ x ++ "\n"
 	logMsg $ "RECV: " ++ show lichessmsg ++ "\n"
@@ -236,6 +234,7 @@ data LichessCommand =
 	SendMove Move
 	deriving Show
 
+listenForCommandsG :: LichessChan -> InGameM ()
 listenForCommandsG inputchan = forever $ do
 	command <- readChan inputchan
 	liftIO $ putStrLn $ "listenForCommandsG: Got " ++ show command
@@ -277,37 +276,10 @@ listenForLichessG outputchan = forever $ receiveG >>= handlemsg
 				writeChan outputchan msg
 				logMsg $ "messageLoopG: writeChan " ++ show msg
 
-{-
-		InGameState{..} <- get
-		let pos@Position{..} = igsCurrentPos
-		let nowmetomove = pColourToMove==igsMyColour && pNextMoveNumber==igsMyNextMove
-		return nowmetomove
--}	
-
-lichessThread :: String -> String -> Chan LichessCommand -> Chan ConfluenceMsg -> IO ()
-lichessThread username pw inputchan outputchan = do
-	withLoginL username pw $ \ user -> do
-		case nowPlaying (user::User) of
-			Just (game:_) -> joinGameL (gameId game) $ listenForLichessG outputchan
-			_             -> startGameL Nothing (Just White) $ listenForLichessG outputchan
+forkLichessThread :: String -> String -> Chan LichessCommand -> Chan ConfluenceMsg -> IO ThreadId
+forkLichessThread username pw inputchan outputchan = fork $ withLoginL username pw $ \ user -> do
+	(case nowPlaying (user::User) of
+		Just (game:_) -> joinGameL (gameId game)
+		_             -> startGameL Nothing (Just White)) $ do
 		fork $ listenForCommandsG inputchan
-	where
-
-	listen_main = do
-		command <- readChan inputchan
-		msg <- case command of
-			
-{-
-	gameloop = do
-		igs <- sharedGet
-		let pos@Position{..} = igsCurrentPos igs
-		liftIO $ appendFile "msgs.log" $ show igs ++ "\n"
-		when ( pColourToMove == igsMyColour igs && pNextMoveNumber == igsMyNextMove igs && not (igsMyMoveSent igs)) $ do
-			let move:_ = moveGen pos
-			sendMoveG move
-		messageLoopG
-		inprogress <- sharedGets igsGameInProgress
-		case inprogress of
-			True  -> gameloop
-			False -> liftIO $ putStrLn "GAME END."
--}
+		listenForLichessG outputchan

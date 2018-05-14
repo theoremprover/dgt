@@ -15,6 +15,7 @@ import Data.Bits
 import qualified Data.Set as Set
 import Control.Monad.Loops
 import Control.Concurrent.Chan.Lifted
+import Control.Concurrent.Lifted (fork,ThreadId)
 
 import Confluence
 import SharedState
@@ -62,36 +63,38 @@ dGT2Square = [
 
 lookupDGT2Square c = lookup c dGT2Square
 
-type DGTM = SharedStateT SerialPort IO
+data DGTState = DGTState {
+	dgtSerialPort :: SerialPort }
+
+type DGTM = SharedStateT DGTState IO
 
 sendDGT :: Char -> [Int] -> DGTM ()
-sendDGT msg_id msg = do
-	s <- sharedGet
-	n <- liftIO $ send s (BS.pack $ msg_id : map chr msg)
+sendDGT msg_id msg = withSharedStateAtomically $ \ DGTState{..} -> do
+	n <- liftIO $ send dgtSerialPort (BS.pack $ msg_id : map chr msg)
 	when (length msg + 1 /= n) $ error $ printf "Sending %s" (show msg)
-	return ()
 
+recvDGT :: Int -> DGTM (Maybe (Char,[Int]))
 recvDGT time_out = do
-	s <- sharedGet
-	mb_header_bs <- liftIO $ System.Timeout.timeout time_out $ rec_part s 3
+	DGTState{..} <- sharedGet
+	mb_header_bs <- liftIO $ System.Timeout.timeout time_out $ rec_part dgtSerialPort 3
 	case mb_header_bs of
 		Nothing -> return Nothing
 		Just header_bs -> do
 			let [msg_id,len_hi,len_lo] = map ord $ BS.unpack header_bs
 			let payload_length = (shift len_hi 7 .|. len_lo) - 3
-			msg_bs <- liftIO $ rec_part s payload_length
+			msg_bs <- liftIO $ rec_part dgtSerialPort payload_length
 			return $ Just (chr $ msg_id .&. 0x7f,map ord $ BS.unpack msg_bs)
 	where
-	rec_part s rest = do
-		msg_part <- recv s rest
+	rec_part serialport rest = do
+		msg_part <- recv serialport rest
 		case BS.length msg_part < rest of
 			False -> return msg_part
 			True  -> do
-				msg_rest <- rec_part s (rest - BS.length msg_part)
+				msg_rest <- rec_part serialport (rest - BS.length msg_part)
 				return $ BS.append msg_part msg_rest
 
-withDGT serialport proc = withSerial serialport serialportSettings $ 
-	evalSharedStateT (sendDGT dGT_SEND_RESET [] >> proc)
+withDGT comport m = withSerial comport serialportSettings $ \ serialport -> do
+	evalSharedStateT (sendDGT dGT_SEND_RESET [] >> m) $ DGTState serialport
 
 getBoard :: DGTM Board
 getBoard = do
@@ -126,6 +129,7 @@ data DGTMessage =
 	OtherMsg Char [Int]
 	deriving Show
 
+recvParseMsgDGT :: Int -> DGTM (Maybe DGTMessage)
 recvParseMsgDGT time_out = do
 	mb_msg <- recvDGT time_out
 	case mb_msg of
@@ -196,7 +200,6 @@ listenForCommandsDGT inputchan outputchan = forever $ do
 	writeChan outputchan msg
 	liftIO $ putStrLn $ "listenForCommandsDGT: " ++ show msg
 
-dgtThread :: String -> Chan DGTCommand -> ConfluenceChan -> IO () 
-dgtThread comport inputchan outputchan = do
-	withDGT comport $ do
-		listenForCommandsDGT inputchan outputchan
+forkDgtThread :: String -> Chan DGTCommand -> ConfluenceChan -> IO ThreadId
+forkDgtThread comport inputchan outputchan = fork $ withDGT comport $ do
+	listenForCommandsDGT inputchan outputchan

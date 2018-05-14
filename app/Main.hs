@@ -34,13 +34,11 @@ main = do
 
 	pw <- readFile "pw.txt"
 	lichessCmdChan <- newChan
-	fork $ lichessThread "Threetee" pw lichessCmdChan msgChan
+	forkLichessThread "Threetee" pw lichessCmdChan msgChan
 
 	comport <- readFile "dgtcom.txt"
 	dgtCmdChan <- newChan
-	fork $ dgtThread comport dgtCmdChan msgChan
-
-	
+	forkDgtThread comport dgtCmdChan msgChan
 
 
 {-
