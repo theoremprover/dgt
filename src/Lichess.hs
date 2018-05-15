@@ -138,7 +138,7 @@ data InGameState = InGameState {
 instance Show WS.Connection where
 	show _ = "<SOME CONNECTION>"
 
-inGameL :: GameData -> InGameM a -> LichessM a
+inGameL :: GameData -> InGameM () -> LichessM (Position,Colour)
 inGameL gamedata ingamem = do
 	let
 		cur_game      = game (gamedata::GameData)
@@ -153,7 +153,7 @@ inGameL gamedata ingamem = do
 		(host,port,options) = ("socket.lichess.org",443,defaultConnectionOptions)
 		headers = [ ("Cookie",BS.pack lisAuthCookie) ]
 	liftIO $ print headers
-	context <- liftIO $ initConnectionContext
+	context <- liftIO $ initConnectionContext -- TODO: Einfacher, gegebene Funktionen benutzen?
 	connection <- liftIO $ connectTo context $ ConnectionParams {
 		connectionHostname  = host,
 		connectionPort      = port,
@@ -178,9 +178,11 @@ inGameL gamedata ingamem = do
 				pingG
 				threadDelay (1500*1000) )
 			`catchIO` (const $ return ())
-		ret <- ingamem
+		ingamem
 		liftIO $ sendClose conn ()
-		return ret
+
+	let Right pos@Position{..} = fromFEN (fen (cur_game::CreatedGame))
+	return (pos,mycolour)
 
 pingG :: InGameM ()
 pingG = do
@@ -241,6 +243,7 @@ listenForCommandsG inputchan = forever $ do
 	case command of
 		SendMove move -> sendMoveG move
 
+listenForLichessG :: ConfluenceChan -> InGameM ()
 listenForLichessG outputchan = forever $ receiveG >>= handlemsg
 	where
 	handlemsg (LichessMsg _ t mb_payload) = do
