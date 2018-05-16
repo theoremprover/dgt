@@ -103,11 +103,11 @@ withLoginL username password lichessm = withSocketsDo $ do
 				clientID      = clientid,
 				lisAuthCookie = BS.unpack cookie_name ++ "=" ++ BS.unpack cookie_value }
 
-startGameL :: Maybe Position -> Maybe Colour -> InGameM a -> LichessM a
-startGameL mb_position mb_colour ingamem = do
+startGameL :: Maybe Position -> Maybe Colour -> LichessM GameData
+startGameL mb_position mb_colour = do
 	liftIO $ putStrLn "startGameL..."
 	let pos = maybe initialPosition Prelude.id mb_position
-	(Status{..},gamedata) <- lichessRequestL "POST" "lichess.org" "/setup/ai" [
+	(status,gamedata) <- lichessRequestL "POST" "lichess.org" "/setup/ai" [
 		("color",Just $ maybe "random" (map toLower . show) mb_colour),
 		("days",Just "2"),("time",Just "5.0"),
 		("fen",Just $ toFEN pos),
@@ -115,12 +115,14 @@ startGameL mb_position mb_colour ingamem = do
 		("level",Just "2"),
 		("timeMode",Just "0"),
 		("variant",Just "1") ] []
-	inGameL gamedata ingamem
+	liftIO $ print status
+	return gamedata
 
-joinGameL :: String -> InGameM a -> LichessM a
-joinGameL gameid ingamem = do
-	(status@Status{..},gamedata) <- lichessRequestL "GET" "lichess.org" ("/"++gameid) [] []
-	inGameL gamedata ingamem
+joinGameL :: String -> LichessM GameData
+joinGameL gameid = do
+	(status,gamedata) <- lichessRequestL "GET" "lichess.org" ("/"++gameid) [] []
+	liftIO $ print status
+	return gamedata
 
 type InGameM = SharedStateT InGameState (SharedStateT LichessState IO)
 
@@ -173,13 +175,8 @@ inGameL gamedata ingamem = do
 		mynextmove = pNextMoveNumber + if pColourToMove == Black && mycolour == White then 1 else 0
 -}
 	flip evalSharedStateT (InGameState conn socketurl currentgameid True Nothing) $ do
-		fork $ ( do
-			forever $ do
-				pingG
-				threadDelay (1500*1000) )
-			`catchIO` (const $ return ())
 		ingamem
-		liftIO $ sendClose conn ()
+--		liftIO $ sendClose conn ()   -- TODO: Where to close conn?
 
 	let Right pos@Position{..} = fromFEN (fen (cur_game::CreatedGame))
 	return (pos,mycolour)
@@ -279,10 +276,17 @@ listenForLichessG outputchan = forever $ receiveG >>= handlemsg
 				writeChan outputchan msg
 				logMsg $ "messageLoopG: writeChan " ++ show msg
 
-forkLichessThread :: String -> String -> Chan LichessCommand -> Chan ConfluenceMsg -> IO ThreadId
-forkLichessThread username pw inputchan outputchan = fork $ withLoginL username pw $ \ user -> do
-	(case nowPlaying (user::User) of
+forkLichessThread :: String -> String -> Chan LichessCommand -> Chan ConfluenceMsg -> IO (Position,Colour)
+forkLichessThread username pw inputchan outputchan = withLoginL username pw $ \ user -> do
+	gamedata <- case nowPlaying (user::User) of
 		Just (game:_) -> joinGameL (gameId game)
-		_             -> startGameL Nothing (Just White)) $ do
+		_             -> startGameL Nothing (Just White)
+	inGameL gamedata $ do
+		fork $ ( do
+			forever $ do
+				pingG
+				threadDelay (1500*1000) )
+			`catchIO` (const $ return ())
 		fork $ listenForCommandsG inputchan
-		listenForLichessG outputchan
+		fork $ listenForLichessG outputchan
+		return ()

@@ -180,7 +180,9 @@ data DGTCommand =
 	WaitForMove Position
 	deriving Show
 
-listenForCommandsDGT inputchan outputchan = forever $ do
+-- Fork and listen for commands
+forkDgtThread :: String -> Chan DGTCommand -> ConfluenceChan -> IO ThreadId
+forkDgtThread comport inputchan outputchan = withDGT comport $ fork $ forever $ do
 	command <- readChan inputchan
 	msg <- case command of
 		WaitForThisMoveDone pos move -> do
@@ -199,7 +201,3 @@ listenForCommandsDGT inputchan outputchan = forever $ do
 			return $ DGTMove move
 	writeChan outputchan msg
 	liftIO $ putStrLn $ "listenForCommandsDGT: " ++ show msg
-
-forkDgtThread :: String -> Chan DGTCommand -> ConfluenceChan -> IO ThreadId
-forkDgtThread comport inputchan outputchan = fork $ withDGT comport $ do
-	listenForCommandsDGT inputchan outputchan

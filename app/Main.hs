@@ -32,14 +32,15 @@ main = do
 
 	msgChan <- newChan
 
-	pw <- readFile "pw.txt"
-	lichessCmdChan <- newChan
-	forkLichessThread "Threetee" pw lichessCmdChan msgChan
-
 	comport <- readFile "dgtcom.txt"
 	dgtCmdChan <- newChan
 	forkDgtThread comport dgtCmdChan msgChan
 
+	pw <- readFile "pw.txt"
+	lichessCmdChan <- newChan
+	(pos,mycolour) <- forkLichessThread "Threetee" pw lichessCmdChan msgChan
+
+	
 
 {-
 main2 = do
