@@ -21,6 +21,7 @@ import Confluence
 import SharedState
 import Chess200
 
+type DGTChan = Chan DGTCommand
 
 serialportSettings = SerialPortSettings CS9600 8 One NoParity NoFlowControl 1
 
@@ -181,7 +182,7 @@ data DGTCommand =
 	deriving Show
 
 -- Fork and listen for commands
-forkDgtThread :: String -> Chan DGTCommand -> ConfluenceChan -> IO ThreadId
+forkDgtThread :: String -> DGTChan -> ConfluenceChan -> IO ThreadId
 forkDgtThread comport inputchan outputchan = withDGT comport $ fork $ forever $ do
 	command <- readChan inputchan
 	msg <- case command of

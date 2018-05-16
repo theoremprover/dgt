@@ -40,7 +40,7 @@ data Position = Position {
 	pCanCastleKingSide  :: [Colour],
 	pEnPassantMiddle    :: Maybe Coors,
 	pHalfmoveClock      :: Int,
-	pNextMoveNumber     :: Int }
+	pNextMoveNumber     :: Int } deriving Eq
 
 initialPosition = Position {
 	pBoard = boardFromString [
@@ -226,9 +226,9 @@ potentialMoves Position{..} = normal_moves ++ castling_moves where
 	base = baseRank pColourToMove
 	square_empty = isNothing . (pBoard!)
 
-data MatchResult = Winner Colour WinReason | Draw DrawReason             deriving Show
-data WinReason   = Resignation | Checkmate                               deriving Show
-data DrawReason  = Fifty_Halfmoves | Stalemate | NoMatePossible | Agreed deriving Show
+data MatchResult = Winner Colour WinReason | Draw DrawReason             deriving (Show,Eq)
+data WinReason   = Resignation | Checkmate                               deriving (Show,Eq)
+data DrawReason  = Fifty_Halfmoves | Stalemate | NoMatePossible | Agreed deriving (Show,Eq)
 
 type Rating = Float
 mAX         = 10000.0

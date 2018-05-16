@@ -1,5 +1,5 @@
 {-# LANGUAGE UnicodeSyntax,RecordWildCards,TypeSynonymInstances,FlexibleInstances,
-	TupleSections,StandaloneDeriving,ScopedTypeVariables #-}
+	TupleSections,StandaloneDeriving,ScopedTypeVariables,FlexibleContexts #-}
 
 module Main where
 
@@ -16,9 +16,10 @@ import Control.Monad.IO.Class
 import Text.Printf
 import System.IO
 import Control.Monad.Loops
---import Control.Monad.Trans.State.Strict (get,gets)
+import Control.Monad.Trans.State.Strict (StateT,get,gets,evalStateT)
 --import Control.Monad.Trans.Class (lift)
 --import Control.Monad (when)
+import Control.Concurrent.Chan.Lifted
 
 import Log
 import DGTSerial
@@ -27,20 +28,53 @@ import Lichess
 --import LichessInterface
 import Confluence
 
+
+data MainS = MainS {
+	msConfluenceChan :: ConfluenceChan,
+	msLichessChan    :: LichessChan,
+	msDGTChan        :: DGTChan,
+	msMyColour       :: Colour,
+	msPosition       :: Position }
+type MainA = StateT MainS IO
+
 main = do
 	initLog
 
 	msgChan <- newChan
 
 	comport <- readFile "dgtcom.txt"
-	dgtCmdChan <- newChan
-	forkDgtThread comport dgtCmdChan msgChan
+	dgtchan <- newChan
+	forkDgtThread comport dgtchan msgChan
 
 	pw <- readFile "pw.txt"
-	lichessCmdChan <- newChan
-	(pos,mycolour) <- forkLichessThread "Threetee" pw lichessCmdChan msgChan
+	lichesschan <- newChan
+	(pos,mycolour) <- forkLichessThread "Threetee" pw lichesschan msgChan
 
-	
+	flip evalStateT (MainS msgChan lichesschan dgtchan mycolour pos) $ do
+		waitForPosOnDGT
+		mainLoopA
+
+readMsg = gets msConfluenceChan >>= readChan
+
+waitMsg msg = iterateUntil (==msg) readMsg
+
+waitForPosOnDGT = do
+	pos <- gets msPosition
+	writeDGTCmd $ WaitForPos pos
+	waitMsg DGTPositionIsSetup
+
+writeDGTCmd cmd = do
+	liftIO $ putStrLn $ "writeDGTCmd " ++ show cmd
+	chan <- gets msDGTChan
+	writeChan chan cmd
+
+mainLoopA = do
+	liftIO $ putStrLn "End."
+{-
+	MainS{..} <- get
+	case msMyColour == pColourToMove msPosition of
+		True -> 
+-}
 
 {-
 main2 = do

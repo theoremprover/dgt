@@ -13,4 +13,4 @@ initLog = liftIO $ do
 	writeFile logFileName $ "Log start: " ++ show now ++ "\n#######################################\n\n"
 
 logMsg :: (MonadIO m) => String -> m ()
-logMsg msg = liftIO $ appendFile "msgs.log" msg
+logMsg msg = liftIO $ appendFile logFileName msg

@@ -296,7 +296,7 @@ instance Read TargetCoors where
 			(p:r) | Just piece <- lookup p [('n',Ú),('b',Û),('r',Ü),('q',Ý)] -> (Just piece,r)
 			s -> (Nothing,s) ]
 
-data MoveFromTo = MoveFromTo Coors Coors (Maybe Piece) deriving Show
+data MoveFromTo = MoveFromTo Coors Coors (Maybe Piece) deriving (Eq,Show)
 instance ToJSON MoveFromTo where
 	toJSON (MoveFromTo from to mb_fig) = String $ T.pack $ show from ++ show (TargetCoors to mb_fig)
 instance FromJSON MoveFromTo where

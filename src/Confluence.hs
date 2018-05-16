@@ -19,4 +19,4 @@ data ConfluenceMsg =
 	DGTMoveDone |
 	DGTPositionIsSetup |
 	DGTMove Move
-	deriving (Show)
+	deriving (Show,Eq)
