@@ -191,7 +191,7 @@ pingG = do
 
 sendG :: LichessMsg -> InGameM ()
 sendG lichessmsg = withSharedStateAtomically $ \ InGameState{..} -> do
-	liftIO $ putStrLn $ "sendG " ++ show (toJSON lichessmsg)
+--	liftIO $ putStrLn $ "sendG " ++ show (toJSON lichessmsg)
 	liftIO $ WS.sendTextData igsConnection lichessmsg
 --	sharedModify $ \ s -> s { igsMyMoveSent = True }
 	logMsg $ "SENT: " ++ show lichessmsg ++ "\n"
@@ -259,7 +259,7 @@ listenForLichessG outputchan = forever $ receiveG >>= handlemsg
 				case mb_lastping of
 					Just lastping -> do
 						let lag_ns = toNanoSecs $ diffTimeSpec now lastping
-						liftIO $ putStrLn $ "### Lag = " ++ show (div lag_ns 1000000) ++ " ms"
+--						liftIO $ putStrLn $ "### Lag = " ++ show (div lag_ns 1000000) ++ " ms"
 						sharedModify $ \ s -> s { igsLastPing = Nothing }
 					Nothing -> return ()
 				return Nothing
@@ -268,8 +268,10 @@ listenForLichessG outputchan = forever $ receiveG >>= handlemsg
 				return $ Just $ LichessGameEnd $ case winnerordraw of
 					WDWinner colour -> Winner colour Checkmate  -- TODO: WinReason herausfinden
 					WDDraw          -> Draw NoMatePossible      -- TODO: DrawReason herausfinden
+			(_,Just (PCrowd crowd)) -> return Nothing
 			(t,Just (PUnknown v)) -> do
 				liftIO $ putStrLn $ "###### listenForLichessG: Could not parse t=" ++ show t ++ ": " ++ show v
+				return Nothing
 			unknown -> do
 				liftIO $ putStrLn $ "###### listenForLichessG: No impl. for " ++ show unknown
 				return Nothing

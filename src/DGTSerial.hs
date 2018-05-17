@@ -185,6 +185,7 @@ data DGTCommand =
 forkDgtThread :: String -> DGTChan -> ConfluenceChan -> IO ThreadId
 forkDgtThread comport inputchan outputchan = withDGT comport $ fork $ forever $ do
 	command <- readChan inputchan
+	liftIO $ putStrLn $ "forkDgtThread: readChan " ++ show command
 	msg <- case command of
 		WaitForThisMoveDone pos move -> do
 			iterateUntil (==move) $ do
@@ -194,6 +195,7 @@ forkDgtThread comport inputchan outputchan = withDGT comport $ fork $ forever $ 
 		WaitForPos pos -> do
 			iterateUntil (== pBoard pos) $ do
 				displayTextDGT "Setup" True
+				liftIO $ putStrLn "YYYY"
 				waitFieldUpdateDGT
 				getBoard
 			return DGTPositionIsSetup

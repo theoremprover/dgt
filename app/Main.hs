@@ -53,7 +53,11 @@ main = do
 
 readMsg = gets msConfluenceChan >>= readChan
 
-waitMsg msg = iterateUntil (==msg) readMsg
+waitMsg msg = iterateUntil (==msg) $ do
+	liftIO $ putStrLn $ "waitMsg " ++ show msg ++ "..."
+	msgw <- readMsg
+	liftIO $ print msgw
+	return msgw
 
 waitForPosOnDGT = do
 	pos <- gets msPosition
