@@ -3,18 +3,13 @@
 
 module Main where
 
-{-
-stack build
-stack exec dgt-exe "COM13"
-stack ghci
--}
-
 --import System.Environment
 import Control.Monad.IO.Class
 --import Data.Char
 --import Data.Bits
 import Text.Printf
 import System.IO
+import Control.Monad (unless)
 import Control.Monad.Loops
 import Control.Monad.Trans.State.Strict (StateT,get,gets,evalStateT)
 --import Control.Monad.Trans.Class (lift)
@@ -42,9 +37,11 @@ main = do
 
 	msgChan <- newChan
 
-	comport <- readFile "dgtcom.txt"
 	dgtchan <- newChan
-	forkDgtThread comport dgtchan msgChan
+	comport <- readFile "dgtcom.txt"
+	unless (null comport) $ do
+		forkDgtThread comport dgtchan msgChan
+		return ()
 
 	pw <- readFile "pw.txt"
 	lichesschan <- newChan

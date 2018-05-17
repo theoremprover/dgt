@@ -214,7 +214,8 @@ parse_payload (Just (String payload_type)) = case payload_type of
 	"crowd"   -> withObject "PCrowd" $ \ o -> PCrowd <$> parseJSON (Object o)
 	"end"     -> withText   "Colour" $ \ t -> PEnd <$> parseJSON (String t)
 	"endData" -> withObject "PEndData" $ \ o -> PEndData <$> parseJSON (Object o)
-	unknown   -> \ v -> fail $ "parse_payload: t= " ++ show unknown ++ " not implemented for " ++ show v
+	unknown   -> pure . PUnknown
+-- \ v -> fail $ "parse_payload: t= " ++ show unknown ++ " not implemented for " ++ show v
 
 data LichessMsgPayload =
 	PLiMove LiMove |
@@ -222,14 +223,19 @@ data LichessMsgPayload =
 	PMessages [LichessMsg] |
 	PEnd Colour |
 	PEndData EndData |
-	PCrowd Crowd
+	PCrowd Crowd |
+	PUnknown Value
 	deriving (Show,Generic)
-instance ToJSON   LichessMsgPayload where
+instance ToJSON LichessMsgPayload where
 	toJSON = \case
-		PLiMove x   -> toJSON x
-		PMyMove x   -> toJSON x
-		PMessages x -> toJSON x
-		PCrowd x    -> toJSON x
+		PLiMove x     -> toJSON x
+		PMyMove x     -> toJSON x
+		PMessages x   -> toJSON x
+		PEnd x        -> toJSON x
+		PEndData x    -> toJSON x
+		PCrowd x      -> toJSON x
+		PUnknown d    -> error $ "toJSON PUnknown " ++ show d
+
 instance FromJSON LichessMsgPayload
 
 data EndData = EndData {
@@ -311,7 +317,7 @@ instance ToJSON   MyMove
 instance FromJSON MyMove
 
 instance (FromJSON a,ToJSON a) => WebSocketsData a where
-	fromLazyByteString = either error Prelude.id . eitherDecode
+	fromLazyByteString x = either (error . (++ show x)) Prelude.id (eitherDecode x)
 	toLazyByteString   = encode
 
 instance {-# OVERLAPS #-} FromJSON Coors where

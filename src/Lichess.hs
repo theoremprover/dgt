@@ -263,12 +263,16 @@ listenForLichessG outputchan = forever $ receiveG >>= handlemsg
 						sharedModify $ \ s -> s { igsLastPing = Nothing }
 					Nothing -> return ()
 				return Nothing
-			(_,Just (PEndData (EndData winnerordraw gamestatus)))     -> do
+			(_,Just (PEndData (EndData winnerordraw gamestatus))) -> do
 				sharedModify $ \ s -> s { igsGameInProgress = False }
 				return $ Just $ LichessGameEnd $ case winnerordraw of
 					WDWinner colour -> Winner colour Checkmate  -- TODO: WinReason herausfinden
 					WDDraw          -> Draw NoMatePossible      -- TODO: DrawReason herausfinden
-			_ -> return Nothing
+			(t,Just (PUnknown v)) -> do
+				liftIO $ putStrLn $ "###### listenForLichessG: Could not parse t=" ++ show t ++ ": " ++ show v
+			unknown -> do
+				liftIO $ putStrLn $ "###### listenForLichessG: No impl. for " ++ show unknown
+				return Nothing
 
 		case mb_msg of
 			Nothing  -> return ()
