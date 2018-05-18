@@ -53,8 +53,8 @@ main = do
 
 readMsg = gets msConfluenceChan >>= readChan
 
-waitMsg msg = iterateUntil (==msg) $ do
-	liftIO $ putStrLn $ "waitMsg " ++ show msg ++ "..."
+waitForMsg msg = iterateUntil (==msg) $ do
+	liftIO $ putStrLn $ "waitForMsg " ++ show msg ++ "..."
 	msgw <- readMsg
 	liftIO $ print msgw
 	return msgw
@@ -64,18 +64,28 @@ waitForPosOnDGT = do
 	writeDGTCmd $ WaitForPos pos
 	waitMsg DGTPositionIsSetup
 
+waitForMoveDGT = do
+	pos <- gets msPosition
+	writeDGTCmd $ WaitForMove pos
+	msg <- readMsg
+	case msg of
+		
+
 writeDGTCmd cmd = do
 	liftIO $ putStrLn $ "writeDGTCmd " ++ show cmd
 	chan <- gets msDGTChan
 	writeChan chan cmd
 
 mainLoopA = do
-	liftIO $ putStrLn "End."
-{-
 	MainS{..} <- get
 	case msMyColour == pColourToMove msPosition of
-		True -> 
--}
+		True -> do
+			move <- waitForMoveDGT 
+			modify $ \ s -> s { msPosition = doMove msPosition move }
+		False -> do
+			
+
+	liftIO $ putStrLn "End."
 
 {-
 main2 = do
