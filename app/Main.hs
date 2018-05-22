@@ -34,19 +34,17 @@ data MainS = MainS {
 	}
 type MainA = StateT MainS IO
 
+instance HasSerialPort MainS where
+	getSerialPort = msDGTPort
+	setSerialPort sp = \ s -> s { msDGTPort = sp }
+
 main = do
 	initLog
-	return ()
-
-{-
-	msgChan <- newChan
-
-	dgtchan <- newChan
+	
 	comport <- readFile "dgtcom.txt"
-	unless (null comport) $ do
-		forkDgtThread comport dgtchan msgChan
-		return ()
-
+	withDGT comport $ do
+		
+{-
 	pw <- readFile "pw.txt"
 	lichesschan <- newChan
 	(pos,mycolour) <- forkLichessThread "Threetee" pw lichesschan msgChan

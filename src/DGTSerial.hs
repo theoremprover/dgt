@@ -24,7 +24,7 @@ import qualified Data.Set as Set
 --import SharedState
 import Chess200
 
-type DGTChan = Chan DGTCommand
+--type DGTChan = Chan DGTCommand
 
 serialportSettings = SerialPortSettings CS9600 8 One NoParity NoFlowControl 1
 
@@ -59,21 +59,9 @@ dGT_CLOCK_BEEP = 0x0b
 dGT_CLOCK_ASCII = 0x0c
 dGT_CLOCK_SEND_VERSION = 0x09
 
-fromBCD bcd = (shift bcd (-4)) * 10 + (bcd .&. 0x0f)
+type DGTM = StateT DGTState
 
-dGT2Square = [
-	(1,(White,Ù)),(2,(White,Ü)),(3,(White,Ú)),( 4,(White,Û)),( 5,(White,Þ)),( 6,(White,Ý)),
-	(7,(Black,Ù)),(8,(Black,Ü)),(9,(Black,Ú)),(10,(Black,Û)),(11,(Black,Þ)),(12,(Black,Ý)) ]
-
-lookupDGT2Square c = lookup c dGT2Square
-
-class HasSerialPort s where
-	getSerialPort :: s -> SerialPort
-	setSerialPort :: SerialPort -> s -> s
-
-type DGTM = StateT
-
-withSerialPort :: (HasSerialPort s,MonadIO m) => (SerialPort -> DGTM s m a) -> StateT s m a
+withSerialPort :: (MonadIO m) => (SerialPort -> DGTM m a) -> DGTM m a
 withSerialPort m = gets getSerialPort >>= m
 
 sendDGT :: (MonadIO m,HasSerialPort s) => Char -> [Int] -> DGTM s m ()
@@ -100,6 +88,7 @@ recvDGT time_out = withSerialPort $ \ sp -> do
 				msg_rest <- rec_part sp (rest - BS.length msg_part)
 				return $ BS.append msg_part msg_rest
 
+withDGT "" m = m
 withDGT comport m = withSerial comport serialportSettings $ \ serialport -> do
 	withStateT (setSerialPort serialport) $ do
 		sendDGT dGT_SEND_RESET []
@@ -107,7 +96,7 @@ withDGT comport m = withSerial comport serialportSettings $ \ serialport -> do
 
 --	evalSharedStateT (sendDGT dGT_SEND_RESET [] >> m) $ DGTState serialport
 
-getBoard :: DGTM Board
+getBoard :: (MonadIO m,HasSerialPort s) => DGTM s m Board
 getBoard = do
 	sendDGT dGT_SEND_BRD []
 	rec_loop
@@ -118,14 +107,16 @@ getBoard = do
 			CurrentBoard board -> return board
 			_ -> rec_loop
 
-displayTextDGT :: String -> Bool -> DGTM ()
+displayTextDGT :: (MonadIO m,HasSerialPort s) => String -> Bool -> DGTM s m ()
 displayTextDGT text beep = do
 	let msg = dGT_CLOCK_START_MESSAGE : dGT_CLOCK_ASCII :
 		map ord (take 8 $ text ++ repeat ' ') ++ [0,if beep then 3 else 1,dGT_CLOCK_END_MESSAGE]
 	sendDGT dGT_CLOCK_MESSAGE (length msg : msg)
 
+{-
 displayClockDGT = do
 	sendDGT dGT_CLOCK_END []
+-}
 
 data TimeLeft = TimeLeft Int Int Int
 instance Show TimeLeft where
@@ -140,7 +131,7 @@ data DGTMessage =
 	OtherMsg Char [Int]
 	deriving Show
 
-recvParseMsgDGT :: Int -> DGTM (Maybe DGTMessage)
+recvParseMsgDGT :: (MonadIO m,HasSerialPort s) => Int -> DGTM s m (Maybe DGTMessage)
 recvParseMsgDGT time_out = do
 	mb_msg <- recvDGT time_out
 	case mb_msg of
@@ -152,11 +143,18 @@ recvParseMsgDGT time_out = do
 				True  -> ClockAck t0 t1 t2 t3 t4 t5 t6
 				False | t6 .&. 1 == 0 -> NoClock
 				False -> do
-					let [hb,mb,sb,hw,mw,sw] = map fromBCD [t0,t1,t2,t3,t4,t5]
+					let [hb,mb,sb,hw,mw,sw] = map from_bcd [t0,t1,t2,t3,t4,t5]
 					ClockTimes (TimeLeft hw mw sw) (TimeLeft hb mb sb)
 			squares | msg_id==dGT_BOARD_DUMP -> CurrentBoard $ array ((1,1),(8,8)) $
 				zip [ (f,r) | r <- [1..8], f <- [8,7 .. 1] ] $ map lookupDGT2Square msg
 			_ -> OtherMsg msg_id msg
+	where
+	from_bcd bcd = (shift bcd (-4)) * 10 + (bcd .&. 0x0f)
+	lookupDGT2Square c = lookup c [
+		(1,(White,Ù)),(2,(White,Ü)),(3,(White,Ú)),( 4,(White,Û)),( 5,(White,Þ)),( 6,(White,Ý)),
+		(7,(Black,Ù)),(8,(Black,Ü)),(9,(Black,Ú)),(10,(Black,Û)),(11,(Black,Þ)),(12,(Black,Ý)) ]
+
+
 
 {-
 waitFieldUpdateDGT = do
