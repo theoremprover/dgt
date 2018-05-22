@@ -13,12 +13,12 @@ import Data.Char
 import Data.Array
 import Data.Bits
 import qualified Data.Set as Set
-import Control.Monad.Loops
-import Control.Concurrent.Chan.Lifted
-import Control.Concurrent.Lifted (fork,ThreadId)
+--import Control.Monad.Loops
+--import Control.Concurrent.Chan.Lifted
+--import Control.Concurrent.Lifted (fork,ThreadId)
 
-import Confluence
-import SharedState
+--import Confluence
+--import SharedState
 import Chess200
 
 type DGTChan = Chan DGTCommand
@@ -64,8 +64,10 @@ dGT2Square = [
 
 lookupDGT2Square c = lookup c dGT2Square
 
+{-
 data DGTState = DGTState {
 	dgtSerialPort :: SerialPort }
+-}
 
 type DGTM = SharedStateT DGTState IO
 
@@ -148,6 +150,7 @@ recvParseMsgDGT time_out = do
 				zip [ (f,r) | r <- [1..8], f <- [8,7 .. 1] ] $ map lookupDGT2Square msg
 			_ -> OtherMsg msg_id msg
 
+{-
 waitFieldUpdateDGT = do
 	Just msg <- recvParseMsgDGT (-1)
 	case msg of
@@ -204,3 +207,4 @@ forkDgtThread comport inputchan outputchan = withDGT comport $ fork $ forever $ 
 			return $ DGTMove move
 	writeChan outputchan msg
 	liftIO $ putStrLn $ "listenForCommandsDGT: " ++ show msg
+-}

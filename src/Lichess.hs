@@ -42,14 +42,14 @@ import           System.Random
 import           Wuss
 import System.Clock
 --import Control.Concurrent.MVar.Lifted
-import Control.Concurrent.Chan.Lifted
+--import Control.Concurrent.Chan.Lifted
 
 import Log
 import Chess200
 import FEN
 import LichessInterface
-import SharedState
-import Confluence
+--import SharedState
+--import Confluence
 
 type LichessChan = Chan LichessCommand
 
@@ -228,6 +228,7 @@ doMoveG limove = do
 	liftIO $ print (igsCurrentPos igs)
 	logMsg $ "MOVED:\n" ++ show igs ++ "\n"
 -}
+{-
 
 data LichessCommand =
 	SendMove Move
@@ -296,3 +297,4 @@ forkLichessThread username pw inputchan outputchan = withLoginL username pw $ \ 
 		fork $ listenForCommandsG inputchan
 		fork $ listenForLichessG outputchan
 		return ()
+-}

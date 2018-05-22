@@ -21,20 +21,24 @@ import DGTSerial
 import Chess200
 import Lichess
 --import LichessInterface
-import Confluence
+--import Confluence
 
 
 data MainS = MainS {
-	msConfluenceChan :: ConfluenceChan,
-	msLichessChan    :: LichessChan,
-	msDGTChan        :: DGTChan,
+--	msConfluenceChan :: ConfluenceChan,
+--	msLichessChan    :: LichessChan,
+--	msDGTChan        :: DGTChan,
 	msMyColour       :: Colour,
-	msPosition       :: Position }
+	msPosition       :: Position,
+	msDGTPort        :: SerialPort,
+	}
 type MainA = StateT MainS IO
 
 main = do
 	initLog
+	return ()
 
+{-
 	msgChan <- newChan
 
 	dgtchan <- newChan
@@ -86,6 +90,7 @@ mainLoopA = do
 			
 
 	liftIO $ putStrLn "End."
+-}
 
 {-
 main2 = do
