@@ -1,7 +1,10 @@
 {-# LANGUAGE RecordWildCards,TupleSections,FlexibleContexts #-}
 {-# OPTIONS_GHC -fno-warn-tabs #-}
 
-module DGTSerial where
+module DGTSerial (
+	module DGTSerial,
+	module System.Hardware.Serialport
+	) where
 
 import qualified Data.ByteString.Char8 as BS
 import System.Hardware.Serialport
@@ -64,40 +67,45 @@ dGT2Square = [
 
 lookupDGT2Square c = lookup c dGT2Square
 
-{-
-data DGTState = DGTState {
-	dgtSerialPort :: SerialPort }
--}
+class HasSerialPort s where
+	getSerialPort :: s -> SerialPort
+	setSerialPort :: SerialPort -> s -> s
 
-type DGTM = SharedStateT DGTState IO
+type DGTM = StateT
 
-sendDGT :: Char -> [Int] -> DGTM ()
-sendDGT msg_id msg = withSharedStateAtomically $ \ DGTState{..} -> do
-	n <- liftIO $ send dgtSerialPort (BS.pack $ msg_id : map chr msg)
+withSerialPort :: (HasSerialPort s,MonadIO m) => (SerialPort -> DGTM s m a) -> StateT s m a
+withSerialPort m = gets getSerialPort >>= m
+
+sendDGT :: (MonadIO m,HasSerialPort s) => Char -> [Int] -> DGTM s m ()
+sendDGT msg_id msg = withSerialPort $ \ sp -> do
+	n <- liftIO $ send sp (BS.pack $ msg_id : map chr msg)
 	when (length msg + 1 /= n) $ error $ printf "Sending %s" (show msg)
 
-recvDGT :: Int -> DGTM (Maybe (Char,[Int]))
-recvDGT time_out = do
-	DGTState{..} <- sharedGet
-	mb_header_bs <- liftIO $ System.Timeout.timeout time_out $ rec_part dgtSerialPort 3
+recvDGT :: (MonadIO m,HasSerialPort s) => Int -> DGTM s m (Maybe (Char,[Int]))
+recvDGT time_out = withSerialPort $ \ sp -> do
+	mb_header_bs <- liftIO $ System.Timeout.timeout time_out $ rec_part sp 3
 	case mb_header_bs of
 		Nothing -> return Nothing
 		Just header_bs -> do
 			let [msg_id,len_hi,len_lo] = map ord $ BS.unpack header_bs
 			let payload_length = (shift len_hi 7 .|. len_lo) - 3
-			msg_bs <- liftIO $ rec_part dgtSerialPort payload_length
+			msg_bs <- liftIO $ rec_part sp payload_length
 			return $ Just (chr $ msg_id .&. 0x7f,map ord $ BS.unpack msg_bs)
 	where
-	rec_part serialport rest = do
-		msg_part <- recv serialport rest
+	rec_part sp rest = do
+		msg_part <- recv sp rest
 		case BS.length msg_part < rest of
 			False -> return msg_part
 			True  -> do
-				msg_rest <- rec_part serialport (rest - BS.length msg_part)
+				msg_rest <- rec_part sp (rest - BS.length msg_part)
 				return $ BS.append msg_part msg_rest
 
 withDGT comport m = withSerial comport serialportSettings $ \ serialport -> do
-	evalSharedStateT (sendDGT dGT_SEND_RESET [] >> m) $ DGTState serialport
+	withStateT (setSerialPort serialport) $ do
+		sendDGT dGT_SEND_RESET []
+		m
+
+--	evalSharedStateT (sendDGT dGT_SEND_RESET [] >> m) $ DGTState serialport
 
 getBoard :: DGTM Board
 getBoard = do
