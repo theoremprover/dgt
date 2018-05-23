@@ -30,9 +30,13 @@ data MainS = MainS {
 --	msDGTChan        :: DGTChan,
 	msMyColour       :: Colour,
 	msPosition       :: Position,
-	msDGTPort        :: SerialPort,
+	msDGTState       :: DGTState,
 	}
 type MainA = StateT MainS IO
+
+instance HasDGTState MainS where
+	setDGTState dgtstate s = s { msDGTState = dgtstate }
+	getDGTState = msDGTState
 
 main = do
 	initLog
@@ -41,7 +45,7 @@ main = do
 	withDGT comport $ do
 		forever $ do
 			move <- waitMoveDGT
-			modifyTunnelState $ \ s -> s { msPosition = doMove (msPosition s) move }
+			modify $ \ s -> s { msPosition = doMove (msPosition s) move }
 			pos <- gets msPosition
 			print pos
 {-
