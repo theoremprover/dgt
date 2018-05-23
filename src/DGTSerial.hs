@@ -22,6 +22,7 @@ import qualified Data.Set as Set
 
 --import Confluence
 --import SharedState
+import TunnelState
 import Chess200
 
 --type DGTChan = Chan DGTCommand
@@ -59,18 +60,35 @@ dGT_CLOCK_BEEP = 0x0b
 dGT_CLOCK_ASCII = 0x0c
 dGT_CLOCK_SEND_VERSION = 0x09
 
-type DGTM = StateT DGTState
+data DGTState = DGTState {
+	dgtsSerialPort :: SerialPort }
 
-withSerialPort :: (MonadIO m) => (SerialPort -> DGTM m a) -> DGTM m a
-withSerialPort m = gets getSerialPort >>= m
+class HasDGTState a where
+	getDGTState :: a -> DGTState
+	setDGTState :: DGTState -> a
 
-sendDGT :: (MonadIO m,HasSerialPort s) => Char -> [Int] -> DGTM s m ()
-sendDGT msg_id msg = withSerialPort $ \ sp -> do
+type DGTM = StateT
+
+withDGT "" m = m
+withDGT comport m = withSerial comport serialportSettings $ \ serialport -> do
+	withStateT (setSerialPort serialport) $ do
+		sendDGT dGT_SEND_RESET []
+		m
+
+--	evalSharedStateT (sendDGT dGT_SEND_RESET [] >> m) $ DGTState serialport
+
+{-
+withDGTState :: (MonadIO m,HasDGTState s) => (SerialPort -> DGTM s m a) -> StateT s m a
+withDGTState m = gets getDGTState >>= m
+-}
+
+sendDGT :: (MonadIO m,HasDGTState s) => Char -> [Int] -> DGTM s m ()
+sendDGT msg_id msg = withDGTState $ \ DGTState{..} -> do
 	n <- liftIO $ send sp (BS.pack $ msg_id : map chr msg)
 	when (length msg + 1 /= n) $ error $ printf "Sending %s" (show msg)
 
-recvDGT :: (MonadIO m,HasSerialPort s) => Int -> DGTM s m (Maybe (Char,[Int]))
-recvDGT time_out = withSerialPort $ \ sp -> do
+recvDGT :: (MonadIO m,HasDGTState s) => Int -> DGTM s m (Maybe (Char,[Int]))
+recvDGT time_out = withDGTState $ \ sp -> do
 	mb_header_bs <- liftIO $ System.Timeout.timeout time_out $ rec_part sp 3
 	case mb_header_bs of
 		Nothing -> return Nothing
@@ -88,15 +106,7 @@ recvDGT time_out = withSerialPort $ \ sp -> do
 				msg_rest <- rec_part sp (rest - BS.length msg_part)
 				return $ BS.append msg_part msg_rest
 
-withDGT "" m = m
-withDGT comport m = withSerial comport serialportSettings $ \ serialport -> do
-	withStateT (setSerialPort serialport) $ do
-		sendDGT dGT_SEND_RESET []
-		m
-
---	evalSharedStateT (sendDGT dGT_SEND_RESET [] >> m) $ DGTState serialport
-
-getBoard :: (MonadIO m,HasSerialPort s) => DGTM s m Board
+getBoard :: (MonadIO m,HasDGTState s) => DGTM s m Board
 getBoard = do
 	sendDGT dGT_SEND_BRD []
 	rec_loop
@@ -107,7 +117,7 @@ getBoard = do
 			CurrentBoard board -> return board
 			_ -> rec_loop
 
-displayTextDGT :: (MonadIO m,HasSerialPort s) => String -> Bool -> DGTM s m ()
+displayTextDGT :: (MonadIO m,HasDGTState s) => String -> Bool -> DGTM s m ()
 displayTextDGT text beep = do
 	let msg = dGT_CLOCK_START_MESSAGE : dGT_CLOCK_ASCII :
 		map ord (take 8 $ text ++ repeat ' ') ++ [0,if beep then 3 else 1,dGT_CLOCK_END_MESSAGE]

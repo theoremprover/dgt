@@ -19,7 +19,7 @@ import Control.Concurrent.Chan.Lifted
 import Log
 import DGTSerial
 import Chess200
-import Lichess
+--import Lichess
 --import LichessInterface
 --import Confluence
 
@@ -34,16 +34,16 @@ data MainS = MainS {
 	}
 type MainA = StateT MainS IO
 
-instance HasSerialPort MainS where
-	getSerialPort = msDGTPort
-	setSerialPort sp = \ s -> s { msDGTPort = sp }
-
 main = do
 	initLog
 	
 	comport <- readFile "dgtcom.txt"
 	withDGT comport $ do
-		
+		forever $ do
+			move <- waitMoveDGT
+			modifyTunnelState $ \ s -> s { msPosition = doMove (msPosition s) move }
+			pos <- gets msPosition
+			print pos
 {-
 	pw <- readFile "pw.txt"
 	lichesschan <- newChan
