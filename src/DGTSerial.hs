@@ -70,7 +70,7 @@ class HasDGTState s where
 
 type DGTM = StateT
 
-withDGT :: (MonadIO m,HasDGTState s) => String -> StateT s m a -> StateT s m a
+withDGT :: (MonadIO m,HasDGTState s) => String -> IO a -> IO a
 withDGT ""      m = m
 withDGT comport m = withSerial comport serialportSettings $ \ serialport -> do
 	modify $ setDGTState (DGTState serialport)

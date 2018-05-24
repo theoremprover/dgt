@@ -42,7 +42,7 @@ main = do
 	initLog
 	
 	comport <- readFile "dgtcom.txt"
-	withDGT comport $ do
+	withDGT comport $ \ serialport -> flip evalStateT (MainS White intialPosition (DGTState serialport))
 		forever $ do
 			move <- waitMoveDGT
 			modify $ \ s -> s { msPosition = doMove (msPosition s) move }
