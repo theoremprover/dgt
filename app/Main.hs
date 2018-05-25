@@ -9,9 +9,10 @@ import Control.Monad.IO.Class
 --import Data.Bits
 import Text.Printf
 import System.IO
-import Control.Monad (unless)
+import Control.Monad (unless,forever)
 import Control.Monad.Loops
-import Control.Monad.Trans.State.Strict (StateT,get,gets,evalStateT)
+import Control.Monad.Trans (lift)
+import Control.Monad.Trans.State.Strict (StateT,modify,gets,evalStateT)
 --import Control.Monad.Trans.Class (lift)
 --import Control.Monad (when)
 import Control.Concurrent.Chan.Lifted
@@ -25,29 +26,25 @@ import Chess200
 
 
 data MainS = MainS {
---	msConfluenceChan :: ConfluenceChan,
---	msLichessChan    :: LichessChan,
---	msDGTChan        :: DGTChan,
 	msMyColour       :: Colour,
-	msPosition       :: Position,
-	msDGTState       :: DGTState,
+	msPosition       :: Position
 	}
 type MainA = StateT MainS IO
-
-instance HasDGTState MainS where
-	setDGTState dgtstate s = s { msDGTState = dgtstate }
-	getDGTState = msDGTState
 
 main = do
 	initLog
 	
 	comport <- readFile "dgtcom.txt"
-	withDGT comport $ \ serialport -> flip evalStateT (MainS White intialPosition (DGTState serialport))
+	withDGT comport $ flip evalStateT (MainS White initialPosition) $ do
+		board <- lift $ getBoardDGT
+		modify $ \ s -> s { msPosition = (msPosition s) { pBoard = board } }
 		forever $ do
-			move <- waitMoveDGT
+			pos <- gets msPosition
+			move <- lift $ getMoveDGT pos
 			modify $ \ s -> s { msPosition = doMove (msPosition s) move }
 			pos <- gets msPosition
-			print pos
+			liftIO $ print pos
+
 {-
 	pw <- readFile "pw.txt"
 	lichesschan <- newChan

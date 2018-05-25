@@ -19,7 +19,7 @@ import qualified Data.Set as Set
 --import Control.Monad.Loops
 --import Control.Concurrent.Chan.Lifted
 --import Control.Concurrent.Lifted (fork,ThreadId)
-import Control.Monad.Trans.State.Strict (StateT,modify)
+import Control.Monad.Trans.State.Strict (StateT,evalStateT,get)
 
 --import Confluence
 --import SharedState
@@ -64,29 +64,30 @@ dGT_CLOCK_SEND_VERSION = 0x09
 data DGTState = DGTState {
 	dgtsSerialPort :: SerialPort }
 
+{-
 class HasDGTState s where
 	getDGTState :: s -> DGTState
 	setDGTState :: DGTState -> s -> s
+-}
 
-type DGTM = StateT
+type DGTM = StateT DGTState
 
-withDGT :: (MonadIO m,HasDGTState s) => String -> IO a -> IO a
-withDGT ""      m = m
+withDGT :: String -> DGTM IO a -> IO a
 withDGT comport m = withSerial comport serialportSettings $ \ serialport -> do
-	modify $ setDGTState (DGTState serialport)
-	sendDGT dGT_SEND_RESET []
-	m
+	flip evalStateT (DGTState serialport) $ do
+		sendDGT dGT_SEND_RESET []
+		m
 
-withDGTState :: (MonadIO m,HasDGTState s) => (DGTState -> StateT s m a) -> StateT s m a
-withDGTState m = gets getDGTState >>= m
+withDGTState :: (Monad m) => (DGTState -> DGTM m a) -> DGTM m a
+withDGTState m = get >>= m
 
-sendDGT :: (MonadIO m,HasDGTState s) => Char -> [Int] -> StateT s m ()
+sendDGT :: (MonadIO m) => Char -> [Int] -> DGTM m ()
 sendDGT msg_id msg = withDGTState $ \ DGTState{..} -> do
 	n <- liftIO $ send dgtsSerialPort (BS.pack $ msg_id : map chr msg)
 	when (length msg + 1 /= n) $ error $ printf "Sending %s" (show msg)
 
-recvDGT :: (MonadIO m,HasDGTState s) => Int -> StateT s m (Maybe (Char,[Int]))
-recvDGT time_out = withDGTState $ \ dgtsSerialPort -> do
+recvDGT :: (MonadIO m) => Int -> DGTM m (Maybe (Char,[Int]))
+recvDGT time_out = withDGTState $ \ DGTState{..} -> do
 	mb_header_bs <- liftIO $ System.Timeout.timeout time_out $ rec_part dgtsSerialPort 3
 	case mb_header_bs of
 		Nothing -> return Nothing
@@ -104,8 +105,8 @@ recvDGT time_out = withDGTState $ \ dgtsSerialPort -> do
 				msg_rest <- rec_part sp (rest - BS.length msg_part)
 				return $ BS.append msg_part msg_rest
 
-getBoard :: (MonadIO m,HasDGTState s) => StateT s m Board
-getBoard = do
+getBoardDGT :: (MonadIO m) => DGTM m Board
+getBoardDGT = do
 	sendDGT dGT_SEND_BRD []
 	rec_loop
 	where
@@ -115,7 +116,7 @@ getBoard = do
 			CurrentBoard board -> return board
 			_ -> rec_loop
 
-displayTextDGT :: (MonadIO m,HasDGTState s) => String -> Bool -> StateT s m ()
+displayTextDGT :: (MonadIO m) => String -> Bool -> DGTM m ()
 displayTextDGT text beep = do
 	let msg = dGT_CLOCK_START_MESSAGE : dGT_CLOCK_ASCII :
 		map ord (take 8 $ text ++ repeat ' ') ++ [0,if beep then 3 else 1,dGT_CLOCK_END_MESSAGE]
@@ -139,7 +140,7 @@ data DGTMessage =
 	OtherMsg Char [Int]
 	deriving Show
 
-recvParseMsgDGT :: (MonadIO m,HasDGTState s) => Int -> StateT s m (Maybe DGTMessage)
+recvParseMsgDGT :: (MonadIO m) => Int -> DGTM m (Maybe DGTMessage)
 recvParseMsgDGT time_out = do
 	mb_msg <- recvDGT time_out
 	case mb_msg of
@@ -162,16 +163,14 @@ recvParseMsgDGT time_out = do
 		(1,(White,Ù)),(2,(White,Ü)),(3,(White,Ú)),( 4,(White,Û)),( 5,(White,Þ)),( 6,(White,Ý)),
 		(7,(Black,Ù)),(8,(Black,Ü)),(9,(Black,Ú)),(10,(Black,Û)),(11,(Black,Þ)),(12,(Black,Ý)) ]
 
-
-
-{-
+waitFieldUpdateDGT :: (MonadIO m) => DGTM m (Coors,Square)
 waitFieldUpdateDGT = do
 	Just msg <- recvParseMsgDGT (-1)
 	case msg of
 		FieldUpdate coors square -> return (coors,square)
 		_ -> waitFieldUpdateDGT
 
-getMoveDGT :: Position -> DGTM Move
+getMoveDGT :: (MonadIO m) => Position -> DGTM m Move
 getMoveDGT pos = do
 	sendDGT dGT_SEND_UPDATE_BRD []
 	loop $ pBoard pos
@@ -192,6 +191,7 @@ getMoveDGT pos = do
 					Just (FieldUpdate coors square) -> loop $ board' // [(coors,square)]
 					_ -> loop board'
 
+{-
 data DGTCommand =
 	WaitForThisMoveDone Position Move |
 	WaitForPos Position |

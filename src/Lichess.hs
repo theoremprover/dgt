@@ -51,6 +51,8 @@ import LichessInterface
 --import SharedState
 --import Confluence
 
+{-
+
 type LichessChan = Chan LichessCommand
 
 data LichessState = LichessState {
@@ -212,6 +214,7 @@ receiveG = withSharedState $ \ InGameState{..} -> do
 sendMoveG :: Move -> InGameM ()
 sendMoveG Move{..} = do
 	sendG $ LichessMsg Nothing "move" $ Just $ PMyMove $ MyMove $ MoveFromTo moveFrom moveTo movePromote
+-}
 
 {-
 doMoveG :: LiMove -> InGameM ()
