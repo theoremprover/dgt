@@ -51,8 +51,6 @@ import LichessInterface
 --import SharedState
 --import Confluence
 
-{-
-
 type LichessChan = Chan LichessCommand
 
 data LichessState = LichessState {
@@ -243,6 +241,7 @@ listenForCommandsG inputchan = forever $ do
 	liftIO $ putStrLn $ "listenForCommandsG: Got " ++ show command
 	case command of
 		SendMove move -> sendMoveG move
+-}
 
 listenForLichessG :: ConfluenceChan -> InGameM ()
 listenForLichessG outputchan = forever $ receiveG >>= handlemsg
@@ -286,6 +285,7 @@ listenForLichessG outputchan = forever $ receiveG >>= handlemsg
 				writeChan outputchan msg
 				logMsg $ "messageLoopG: writeChan " ++ show msg
 
+{-
 forkLichessThread :: String -> String -> Chan LichessCommand -> Chan ConfluenceMsg -> IO (Position,Colour)
 forkLichessThread username pw inputchan outputchan = withLoginL username pw $ \ user -> do
 	gamedata <- case nowPlaying (user::User) of

@@ -35,15 +35,17 @@ main = do
 	initLog
 	
 	comport <- readFile "dgtcom.txt"
-	withDGT comport $ flip evalStateT (MainS White initialPosition) $ do
-		board <- lift $ getBoardDGT
-		modify $ \ s -> s { msPosition = (msPosition s) { pBoard = board } }
-		forever $ do
-			pos <- gets msPosition
-			move <- lift $ getMoveDGT pos
-			modify $ \ s -> s { msPosition = doMove (msPosition s) move }
-			pos <- gets msPosition
-			liftIO $ print pos
+	withDGT comport $ do
+		
+		flip evalStateT (MainS White initialPosition) $ do
+			board <- lift $ getBoardDGT
+			modify $ \ s -> s { msPosition = (msPosition s) { pBoard = board } }
+			forever $ do
+				pos <- gets msPosition
+				move <- lift $ getMoveDGT pos
+				modify $ \ s -> s { msPosition = doMove (msPosition s) move }
+				pos <- gets msPosition
+				liftIO $ print pos
 
 {-
 	pw <- readFile "pw.txt"
