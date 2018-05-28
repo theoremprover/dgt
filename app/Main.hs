@@ -36,7 +36,7 @@ main = do
 	
 	comport <- readFile "dgtcom.txt"
 	withDGT comport $ do
-		
+		withLoginL
 		flip evalStateT (MainS White initialPosition) $ do
 			board <- lift $ getBoardDGT
 			modify $ \ s -> s { msPosition = (msPosition s) { pBoard = board } }
