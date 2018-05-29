@@ -51,15 +51,16 @@ import LichessInterface
 --import SharedState
 --import Confluence
 
-type LichessChan = Chan LichessCommand
+--type LichessChan = Chan LichessCommand
 
 data LichessState = LichessState {
 	clientID      :: String,
 	lisAuthCookie :: String } deriving Show
 
-type LichessM = SharedStateT LichessState IO
+type LichessM = SharedStateT LichessState
 
-rawLichessRequest :: (FromJSON val,MonadIO m) => BS.ByteString -> BS.ByteString -> String -> [(String,Maybe String)] -> [(String,String)] -> m (Network.HTTP.Conduit.Response BS.ByteString,val)
+rawLichessRequest :: (FromJSON val,MonadIO m) => BS.ByteString -> BS.ByteString -> String -> [(String,Maybe String)] ->
+	[(String,String)] -> m (Network.HTTP.Conduit.Response BS.ByteString,val)
 rawLichessRequest method host path querystring headers = do
 --	liftIO $ putStrLn $ "rawLichessRequest method=" ++ BS.unpack method ++ " host=" ++ BS.unpack host ++ " path=" ++ path ++ " querystring=" ++ show querystring
 	response <- liftIO ( ( httpBS $
@@ -80,7 +81,8 @@ rawLichessRequest method host path querystring headers = do
 			error $ "rawLichessRequest eitherDecodeStrict: " ++ errmsg
 		Right val -> return (response,val)
 
-lichessRequestL :: (FromJSON val) => BS.ByteString -> BS.ByteString -> String -> [(String,Maybe String)] -> [(String,String)] -> LichessM (Status,val)
+lichessRequestL :: (FromJSON val,MonadIO m) => BS.ByteString -> BS.ByteString -> String ->
+	[(String,Maybe String)] -> [(String,String)] -> LichessM m (Status,val)
 lichessRequestL method host path querystring headers = do
 	authcookie <- sharedGets lisAuthCookie
 	(response,val) <- rawLichessRequest method host path querystring (("Cookie",authcookie):headers)
@@ -89,7 +91,7 @@ lichessRequestL method host path querystring headers = do
 	liftIO $ BS.putStrLn $ getResponseBody response
 	return (status,val)
 
-withLoginL :: String -> String -> (User -> LichessM a) -> IO a
+withLoginL :: (MonadIO m) => String -> String -> (User -> LichessM m a) -> IO a
 withLoginL username password lichessm = withSocketsDo $ do
 	(response,user::User) <- rawLichessRequest "POST" "lichess.org" "/login" [("username",Just username),("password",Just password)] []
 	let Status{..} = getResponseStatus response
@@ -99,11 +101,11 @@ withLoginL username password lichessm = withSocketsDo $ do
 			liftIO $ putStrLn "OK, logged in."
 			let [Cookie{..}] = destroyCookieJar $ responseCookieJar response
 			clientid <- forM [1..10] $ \ _ -> liftIO $ getStdRandom (randomR ('a','z'))
-			evalSharedStateT (lichessm user) $ LichessState {
+			evalStateT (lichessm user) $ LichessState {
 				clientID      = clientid,
 				lisAuthCookie = BS.unpack cookie_name ++ "=" ++ BS.unpack cookie_value }
 
-startGameL :: Maybe Position -> Maybe Colour -> LichessM GameData
+startGameL :: (MonadIO m) => Maybe Position -> Maybe Colour -> LichessM m GameData
 startGameL mb_position mb_colour = do
 	liftIO $ putStrLn "startGameL..."
 	let pos = maybe initialPosition Prelude.id mb_position
@@ -118,7 +120,7 @@ startGameL mb_position mb_colour = do
 	liftIO $ print status
 	return gamedata
 
-joinGameL :: String -> LichessM GameData
+joinGameL :: (MonadIO m) => String -> LichessM m GameData
 joinGameL gameid = do
 	(status,gamedata) <- lichessRequestL "GET" "lichess.org" ("/"++gameid) [] []
 	liftIO $ print status
@@ -140,7 +142,7 @@ data InGameState = InGameState {
 instance Show WS.Connection where
 	show _ = "<SOME CONNECTION>"
 
-inGameL :: GameData -> InGameM () -> LichessM (Position,Colour)
+inGameL :: (MonadIO m) => GameData -> InGameM () -> LichessM m (Position,Colour)
 inGameL gamedata ingamem = do
 	let
 		cur_game      = game (gamedata::GameData)
