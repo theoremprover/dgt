@@ -8,11 +8,12 @@
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE UndecidableInstances  #-}
 {-# LANGUAGE UnicodeSyntax         #-}
+{-# LANGUAGE TypeFamilies          #-}
 {-# OPTIONS_GHC -fno-warn-tabs #-}
 
 module Lichess where
 
-import           Control.Concurrent.Lifted
+--import           Control.Concurrent.Lifted
 import           Control.Exception
 import           Control.Exception.Enclosed
 import           Control.Monad
@@ -20,7 +21,7 @@ import           Control.Monad
 --import           Control.Monad.Trans.Class        (lift)
 import           Control.Monad.IO.Class           (MonadIO, liftIO)
 import           Control.Monad.Trans.Control
---import           Control.Monad.Trans.State.Strict
+import           Control.Monad.Trans.State.Strict
 import           Data.Aeson
 import           Data.Aeson.Types                 (explicitParseField)
 import qualified Data.ByteString.Char8            as BS
@@ -72,8 +73,7 @@ rawLichessRequest method host path querystring headers = do
 		setRequestHeaders ([("Accept","application/vnd.lichess.v3+json")] ++ map (\(a,b) -> (mk (BS.pack a),BS.pack b)) headers) $
 		setRequestHost host $
 		defaultRequest ) `catch` \case
-			ex@(HttpExceptionRequest _ excontent) -> error ("XXX:" ++ show ex)
-			ex -> error $ show ex )
+			ex@(SomeException _) -> error $ "rawLichessRequest httpBS:" ++ show ex )
 	let bs = getResponseBody response
 	case eitherDecodeStrict bs of
 		Left errmsg -> do
@@ -84,14 +84,14 @@ rawLichessRequest method host path querystring headers = do
 lichessRequestL :: (FromJSON val,MonadIO m) => BS.ByteString -> BS.ByteString -> String ->
 	[(String,Maybe String)] -> [(String,String)] -> LichessM m (Status,val)
 lichessRequestL method host path querystring headers = do
-	authcookie <- sharedGets lisAuthCookie
+	authcookie <- gets lisAuthCookie
 	(response,val) <- rawLichessRequest method host path querystring (("Cookie",authcookie):headers)
 	let status = getResponseStatus response
 	liftIO $ BS.putStrLn $ statusMessage status
 	liftIO $ BS.putStrLn $ getResponseBody response
 	return (status,val)
 
-withLoginL :: (MonadIO m) => String -> String -> (User -> LichessM m a) -> m a
+withLoginL :: (MonadIO m, m ~ m2) => String -> String -> (User -> LichessM m a) -> m2 a
 withLoginL username password lichessm = withSocketsDo $ do
 	(response,user::User) <- rawLichessRequest "POST" "lichess.org" "/login" [("username",Just username),("password",Just password)] []
 	let Status{..} = getResponseStatus response
@@ -126,7 +126,7 @@ joinGameL gameid = do
 	liftIO $ print status
 	return gamedata
 
-type InGameM = SharedStateT InGameState (SharedStateT LichessState IO)
+type InGameM = StateT InGameState (StateT LichessState IO)
 
 data InGameState = InGameState {
 	igsConnection     :: WS.Connection,
@@ -150,7 +150,7 @@ inGameL gamedata ingamem = do
 		socketurl     = LichessInterface.round (url gamedata)
 		mycolour      = player (cur_game::CreatedGame)
 	logMsg $ show gamedata ++ "\n"
-	LichessState{..} <- sharedGet
+	LichessState{..} <- get
 	let path = socketurl ++ "/socket/v2?sri=" ++ clientID
 	liftIO $ putStrLn $ "path=" ++ path
 	let
@@ -176,7 +176,7 @@ inGameL gamedata ingamem = do
 		Right pos@Position{..} = fromFEN (fen (cur_game::CreatedGame))
 		mynextmove = pNextMoveNumber + if pColourToMove == Black && mycolour == White then 1 else 0
 -}
-	flip evalSharedStateT (InGameState conn socketurl currentgameid True Nothing) $ do
+	flip evalStateT (InGameState conn socketurl currentgameid True Nothing) $ do
 		ingamem
 --		liftIO $ sendClose conn ()   -- TODO: Where to close conn?
 
@@ -185,21 +185,23 @@ inGameL gamedata ingamem = do
 
 pingG :: InGameM ()
 pingG = do
-	InGameState{..} <- sharedGet
+	InGameState{..} <- get
 	when (isNothing igsLastPing) $ do
 		sendG $ LichessMsg (Just 0) "p" Nothing
 		now <- liftIO $ getTime Monotonic
-		sharedModify $ \ s -> s { igsLastPing = Just now }
+		modify $ \ s -> s { igsLastPing = Just now }
 
 sendG :: LichessMsg -> InGameM ()
-sendG lichessmsg = withSharedStateAtomically $ \ InGameState{..} -> do
+sendG lichessmsg = do
+	InGameState{..} <- get
 --	liftIO $ putStrLn $ "sendG " ++ show (toJSON lichessmsg)
 	liftIO $ WS.sendTextData igsConnection lichessmsg
 --	sharedModify $ \ s -> s { igsMyMoveSent = True }
 	logMsg $ "SENT: " ++ show lichessmsg ++ "\n"
 
 receiveG :: InGameM LichessMsg
-receiveG = withSharedState $ \ InGameState{..} -> do
+receiveG = do
+	InGameState{..} <- get
 	datamsg <- liftIO $ receiveDataMessage igsConnection
 	let (lichessmsg,x) :: (LichessMsg,String) = case datamsg of
 		Text   x -> (fromLazyByteString x,BSL8.unpack x)
@@ -214,7 +216,6 @@ receiveG = withSharedState $ \ InGameState{..} -> do
 sendMoveG :: Move -> InGameM ()
 sendMoveG Move{..} = do
 	sendG $ LichessMsg Nothing "move" $ Just $ PMyMove $ MyMove $ MoveFromTo moveFrom moveTo movePromote
--}
 
 {-
 doMoveG :: LiMove -> InGameM ()
@@ -245,6 +246,7 @@ listenForCommandsG inputchan = forever $ do
 		SendMove move -> sendMoveG move
 -}
 
+{-
 listenForLichessG :: ConfluenceChan -> InGameM ()
 listenForLichessG outputchan = forever $ receiveG >>= handlemsg
 	where
@@ -286,6 +288,7 @@ listenForLichessG outputchan = forever $ receiveG >>= handlemsg
 			Just msg -> do
 				writeChan outputchan msg
 				logMsg $ "messageLoopG: writeChan " ++ show msg
+-}
 
 {-
 forkLichessThread :: String -> String -> Chan LichessCommand -> Chan ConfluenceMsg -> IO (Position,Colour)
