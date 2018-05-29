@@ -57,7 +57,7 @@ data LichessState = LichessState {
 	clientID      :: String,
 	lisAuthCookie :: String } deriving Show
 
-type LichessM = SharedStateT LichessState
+type LichessM = StateT LichessState
 
 rawLichessRequest :: (FromJSON val,MonadIO m) => BS.ByteString -> BS.ByteString -> String -> [(String,Maybe String)] ->
 	[(String,String)] -> m (Network.HTTP.Conduit.Response BS.ByteString,val)
@@ -91,7 +91,7 @@ lichessRequestL method host path querystring headers = do
 	liftIO $ BS.putStrLn $ getResponseBody response
 	return (status,val)
 
-withLoginL :: (MonadIO m) => String -> String -> (User -> LichessM m a) -> IO a
+withLoginL :: (MonadIO m) => String -> String -> (User -> LichessM m a) -> m a
 withLoginL username password lichessm = withSocketsDo $ do
 	(response,user::User) <- rawLichessRequest "POST" "lichess.org" "/login" [("username",Just username),("password",Just password)] []
 	let Status{..} = getResponseStatus response
