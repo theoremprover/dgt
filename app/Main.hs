@@ -20,8 +20,8 @@ import Control.Concurrent.Chan.Lifted
 import Log
 import DGTSerial
 import Chess200
---import Lichess
---import LichessInterface
+import Lichess
+import LichessInterface
 --import Confluence
 
 
@@ -29,26 +29,48 @@ data MainS = MainS {
 	msMyColour       :: Colour,
 	msPosition       :: Position
 	}
-type MainA = StateT MainS IO
+type MainM = StateT MainS
 
-main = do
+main = withLichessDo $ do
 	initLog
 	
 	comport <- readFile "dgtcom.txt"
 	withDGT comport $ do
-		withLoginL
-		flip evalStateT (MainS White initialPosition) $ do
-			board <- lift $ getBoardDGT
-			modify $ \ s -> s { msPosition = (msPosition s) { pBoard = board } }
-			forever $ do
-				pos <- gets msPosition
-				move <- lift $ getMoveDGT pos
-				modify $ \ s -> s { msPosition = doMove (msPosition s) move }
-				pos <- gets msPosition
-				liftIO $ print pos
+		pw <- liftIO $ readFile "pw.txt"
+		withLoginL "Threetee" pw $ \ user -> do
+			gamedata <- case nowPlaying (user::User) of
+				Just (game:_) -> joinGameL (gameId game)
+				_             -> startGameL Nothing (Just White)
+			inGameL gamedata $ \ pos mycolour -> do			
+				flip evalStateT (MainS mycolour pos) $ do
+					waitForPosOnDGT
+{-
+					board <- lift $ lift $ lift $ getBoardDGT
+					modify $ \ s -> s { msPosition = (msPosition s) { pBoard = board } }
+					forever $ do
+						pos <- gets msPosition
+						move <- lift $ lift $ lift $ getMoveDGT pos
+						modify $ \ s -> s { msPosition = doMove (msPosition s) move }
+						pos <- gets msPosition
+						liftIO $ print pos
+-}
+
+waitForPosOnDGT :: MainM (InGameM (LichessM (DGTM IO))) ()
+waitForPosOnDGT = do
+	liftIO $ putStrLn "waitForPosOnDGT..."
+	pos <- gets msPosition
+	lift $ lift $ lift $ do
+		displayTextDGT "Setup" True
+		iterateUntil (== pBoard pos) $ do
+			liftIO $ putStrLn "waitFieldUpdateDGT..."
+			waitFieldUpdateDGT
+			liftIO $ putStrLn "getBoardDGT..."
+			getBoardDGT
+		liftIO $ putStrLn "OK"
+		displayTextDGT "OK" True
+
 
 {-
-	pw <- readFile "pw.txt"
 	lichesschan <- newChan
 	(pos,mycolour) <- forkLichessThread "Threetee" pw lichesschan msgChan
 

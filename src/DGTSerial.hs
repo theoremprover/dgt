@@ -165,6 +165,7 @@ recvParseMsgDGT time_out = do
 
 waitFieldUpdateDGT :: (MonadIO m) => DGTM m (Coors,Square)
 waitFieldUpdateDGT = do
+	sendDGT dGT_SEND_UPDATE_BRD []
 	Just msg <- recvParseMsgDGT (-1)
 	case msg of
 		FieldUpdate coors square -> return (coors,square)

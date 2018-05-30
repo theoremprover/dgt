@@ -8,12 +8,11 @@
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE UndecidableInstances  #-}
 {-# LANGUAGE UnicodeSyntax         #-}
-{-# LANGUAGE TypeFamilies          #-}
 {-# OPTIONS_GHC -fno-warn-tabs #-}
 
 module Lichess where
 
---import           Control.Concurrent.Lifted
+import           Control.Concurrent.Lifted
 import           Control.Exception
 import           Control.Exception.Enclosed
 import           Control.Monad
@@ -54,6 +53,8 @@ import LichessInterface
 
 --type LichessChan = Chan LichessCommand
 
+withLichessDo = withSocketsDo
+
 data LichessState = LichessState {
 	clientID      :: String,
 	lisAuthCookie :: String } deriving Show
@@ -91,8 +92,8 @@ lichessRequestL method host path querystring headers = do
 	liftIO $ BS.putStrLn $ getResponseBody response
 	return (status,val)
 
-withLoginL :: (MonadIO m, m ~ m2) => String -> String -> (User -> LichessM m a) -> m2 a
-withLoginL username password lichessm = withSocketsDo $ do
+withLoginL :: (MonadIO m) => String -> String -> (User -> LichessM m a) -> m a
+withLoginL username password lichessm = do
 	(response,user::User) <- rawLichessRequest "POST" "lichess.org" "/login" [("username",Just username),("password",Just password)] []
 	let Status{..} = getResponseStatus response
 	case statusCode == 200 of
@@ -126,7 +127,7 @@ joinGameL gameid = do
 	liftIO $ print status
 	return gamedata
 
-type InGameM = StateT InGameState (StateT LichessState IO)
+type InGameM = StateT InGameState
 
 data InGameState = InGameState {
 	igsConnection     :: WS.Connection,
@@ -142,7 +143,7 @@ data InGameState = InGameState {
 instance Show WS.Connection where
 	show _ = "<SOME CONNECTION>"
 
-inGameL :: (MonadIO m) => GameData -> InGameM () -> LichessM m (Position,Colour)
+inGameL :: (MonadIO m,MonadBaseControl IO m) => GameData -> (Position -> Colour -> InGameM (LichessM m) ()) -> LichessM m ()
 inGameL gamedata ingamem = do
 	let
 		cur_game      = game (gamedata::GameData)
@@ -171,19 +172,21 @@ inGameL gamedata ingamem = do
 		(maybe (return ()) (connectionPut connection . BSL.toStrict))
 	conn <- liftIO $ WS.runClientWithStream stream host path options headers return
 	logMsg $ "FEN: " ++ fen (cur_game::CreatedGame)
-{-
-	let
-		Right pos@Position{..} = fromFEN (fen (cur_game::CreatedGame))
-		mynextmove = pNextMoveNumber + if pColourToMove == Black && mycolour == White then 1 else 0
--}
-	flip evalStateT (InGameState conn socketurl currentgameid True Nothing) $ do
-		ingamem
---		liftIO $ sendClose conn ()   -- TODO: Where to close conn?
-
 	let Right pos@Position{..} = fromFEN (fen (cur_game::CreatedGame))
-	return (pos,mycolour)
 
-pingG :: InGameM ()
+	flip evalStateT (InGameState conn socketurl currentgameid True Nothing) $ do
+		pingthreadid <- fork $ ( do
+			forever $ do
+				pingG
+				threadDelay (1500*1000) )
+			`catchIO` (const $ return ())
+		ingamem pos mycolour
+		killThread pingthreadid
+		liftIO $ sendClose conn ()
+
+	return ()
+
+pingG :: (MonadIO m) => InGameM m ()
 pingG = do
 	InGameState{..} <- get
 	when (isNothing igsLastPing) $ do
@@ -191,7 +194,7 @@ pingG = do
 		now <- liftIO $ getTime Monotonic
 		modify $ \ s -> s { igsLastPing = Just now }
 
-sendG :: LichessMsg -> InGameM ()
+sendG :: (MonadIO m) => LichessMsg -> InGameM m ()
 sendG lichessmsg = do
 	InGameState{..} <- get
 --	liftIO $ putStrLn $ "sendG " ++ show (toJSON lichessmsg)
@@ -199,7 +202,7 @@ sendG lichessmsg = do
 --	sharedModify $ \ s -> s { igsMyMoveSent = True }
 	logMsg $ "SENT: " ++ show lichessmsg ++ "\n"
 
-receiveG :: InGameM LichessMsg
+receiveG :: (MonadIO m) => InGameM m LichessMsg
 receiveG = do
 	InGameState{..} <- get
 	datamsg <- liftIO $ receiveDataMessage igsConnection
@@ -213,7 +216,7 @@ receiveG = do
 	logMsg $ "RECV: " ++ show lichessmsg ++ "\n"
 	return lichessmsg
 
-sendMoveG :: Move -> InGameM ()
+sendMoveG :: (MonadIO m) => Move -> InGameM m ()
 sendMoveG Move{..} = do
 	sendG $ LichessMsg Nothing "move" $ Just $ PMyMove $ MyMove $ MoveFromTo moveFrom moveTo movePromote
 
