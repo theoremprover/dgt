@@ -171,6 +171,7 @@ waitFieldUpdateDGT = do
 		FieldUpdate coors square -> return (coors,square)
 		_ -> waitFieldUpdateDGT
 
+--TODO: Rochade berücksichtigen
 getMoveDGT :: (MonadIO m) => Position -> DGTM m Move
 getMoveDGT pos = do
 	sendDGT dGT_SEND_UPDATE_BRD []
@@ -191,35 +192,3 @@ getMoveDGT pos = do
 					Nothing -> return move
 					Just (FieldUpdate coors square) -> loop $ board' // [(coors,square)]
 					_ -> loop board'
-
-{-
-data DGTCommand =
-	WaitForThisMoveDone Position Move |
-	WaitForPos Position |
-	WaitForMove Position
-	deriving Show
-
--- Fork and listen for commands
-forkDgtThread :: String -> DGTChan -> ConfluenceChan -> IO ThreadId
-forkDgtThread comport inputchan outputchan = withDGT comport $ fork $ forever $ do
-	command <- readChan inputchan
-	liftIO $ putStrLn $ "forkDgtThread: readChan " ++ show command
-	msg <- case command of
-		WaitForThisMoveDone pos move -> do
-			iterateUntil (==move) $ do
-				displayTextDGT (show move) True
-				getMoveDGT pos
-			return DGTMoveDone
-		WaitForPos pos -> do
-			iterateUntil (== pBoard pos) $ do
-				displayTextDGT "Setup" True
-				liftIO $ putStrLn "YYYY"
-				waitFieldUpdateDGT
-				getBoard
-			return DGTPositionIsSetup
-		WaitForMove pos -> do
-			move <- getMoveDGT pos
-			return $ DGTMove move
-	writeChan outputchan msg
-	liftIO $ putStrLn $ "listenForCommandsDGT: " ++ show msg
--}

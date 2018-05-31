@@ -12,7 +12,7 @@ import System.IO
 import Control.Monad (unless,forever)
 import Control.Monad.Loops
 import Control.Monad.Trans (lift)
-import Control.Monad.Trans.State.Strict (StateT,modify,gets,evalStateT)
+import Control.Monad.Trans.State.Strict (StateT,modify,get,gets,evalStateT)
 --import Control.Monad.Trans.Class (lift)
 --import Control.Monad (when)
 import Control.Concurrent.Chan.Lifted
@@ -31,6 +31,9 @@ data MainS = MainS {
 	}
 type MainM = StateT MainS
 
+liftDGT = lift . lift . lift
+liftInGame = lift
+
 main = withLichessDo $ do
 	initLog
 	
@@ -43,24 +46,52 @@ main = withLichessDo $ do
 				_             -> startGameL Nothing (Just White)
 			inGameL gamedata $ \ pos mycolour -> do			
 				flip evalStateT (MainS mycolour pos) $ do
+					liftIO $ print pos
+					liftDGT $ displayTextDGT "Setup" True
 					waitForPosOnDGT
-{-
-					board <- lift $ lift $ lift $ getBoardDGT
-					modify $ \ s -> s { msPosition = (msPosition s) { pBoard = board } }
-					forever $ do
-						pos <- gets msPosition
-						move <- lift $ lift $ lift $ getMoveDGT pos
-						modify $ \ s -> s { msPosition = doMove (msPosition s) move }
-						pos <- gets msPosition
-						liftIO $ print pos
--}
+					gameLoop
+
+gameLoop = do
+	MainS mycol pos <- get
+	liftIO $ print pos
+
+	move_or_end <- case mycol == pColourToMove pos of
+		True -> do
+			liftIO $ putStrLn "Waiting for DGT move..."
+			move <- liftDGT $ do
+				displayTextDGT "You" False
+				getMoveDGT pos
+			return $ Left move
+		False -> do
+			liftIO $ putStrLn "Waiting for Lichess move..."
+			liftDGT $ displayTextDGT "Wait" False
+			liftInGame $ waitForMoveG pos
+
+	mb_matchresult <- case move_or_end of
+		Left move -> do
+			let pos' = doMove pos move
+			modify $ \ s -> s { msPosition = pos' }
+
+			case mycol == pColourToMove pos of
+				True -> liftInGame $ do
+					sendMoveG move
+				False -> do
+					liftDGT $ displayTextDGT (show move) True
+					waitForPosOnDGT
+
+			return $ snd $ rate pos'
+		Right matchresult -> return $ Just matchresult
+
+	case mb_matchresult of
+		Nothing -> gameLoop
+		Just matchresult -> do
+			liftIO $ print matchresult
 
 waitForPosOnDGT :: MainM (InGameM (LichessM (DGTM IO))) ()
 waitForPosOnDGT = do
 	liftIO $ putStrLn "waitForPosOnDGT..."
 	pos <- gets msPosition
-	lift $ lift $ lift $ do
-		displayTextDGT "Setup" True
+	liftDGT $ do
 		iterateUntil (== pBoard pos) $ do
 			liftIO $ putStrLn "waitFieldUpdateDGT..."
 			waitFieldUpdateDGT

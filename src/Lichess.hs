@@ -136,7 +136,7 @@ data InGameState = InGameState {
 	igsSocketURL      :: String,
 	igsCurrentGameID  :: String,
 --	igsMyNextMove     :: Int,
-	igsGameInProgress :: Bool,
+--	igsGameInProgress :: Bool,
 --	igsMyMoveSent     :: Bool,
 	igsLastPing       :: Maybe TimeSpec }
 	deriving Show
@@ -174,7 +174,7 @@ inGameL gamedata ingamem = do
 	logMsg $ "FEN: " ++ fen (cur_game::CreatedGame)
 	let Right pos@Position{..} = fromFEN (fen (cur_game::CreatedGame))
 
-	flip evalStateT (InGameState conn socketurl currentgameid True Nothing) $ do
+	flip evalStateT (InGameState conn socketurl currentgameid Nothing) $ do
 		pingthreadid <- fork $ ( do
 			forever $ do
 				pingG
@@ -205,107 +205,71 @@ sendG lichessmsg = do
 receiveG :: (MonadIO m) => InGameM m LichessMsg
 receiveG = do
 	InGameState{..} <- get
+	liftIO $ putStrLn $ "receiveG: receiveDataMessage"
 	datamsg <- liftIO $ receiveDataMessage igsConnection
 	let (lichessmsg,x) :: (LichessMsg,String) = case datamsg of
 		Text   x -> (fromLazyByteString x,BSL8.unpack x)
 		Binary x -> (fromLazyByteString x,BSL8.unpack x)
 --	liftIO $ putStrLn $ "receiveG: " ++ x
 --	lichessmsg <- liftIO $ WS.receiveData igsConnection
---	liftIO $ putStrLn $ "receiveG: " ++ show lichessmsg
+	liftIO $ putStrLn $ "receiveG: " ++ show lichessmsg
 	logMsg $ "RECV = " ++ x ++ "\n"
 	logMsg $ "RECV: " ++ show lichessmsg ++ "\n"
 	return lichessmsg
 
 sendMoveG :: (MonadIO m) => Move -> InGameM m ()
-sendMoveG Move{..} = do
-	sendG $ LichessMsg Nothing "move" $ Just $ PMyMove $ MyMove $ MoveFromTo moveFrom moveTo movePromote
+sendMoveG move = do
+	let(from,to,prom) = case move of
+		Move{..} -> (moveFrom,moveTo,movePromote)
+		Castling col Queenside -> ((5,baseRank col),(3,baseRank col),Nothing)
+		Castling col Kingside  -> ((5,baseRank col),(7,baseRank col),Nothing)
+	sendG $ LichessMsg Nothing "move" $ Just $ PMyMove $ MyMove $ MoveFromTo from to prom
 
-{-
-doMoveG :: LiMove -> InGameM ()
-doMoveG limove = do
-	let MoveFromTo from to mb_promote = uci (limove::LiMove)
-	pos <- gets igsCurrentPos
-	let move = case [ move | move@Move{..} <- moveGen pos, moveFrom==from, moveTo==to, movePromote==mb_promote ] of
-		move:_ -> move
-		_ -> error $ "limove=" ++ show limove ++ "\nmoveGen pos = " ++ show (moveGen pos)
-	sharedModify $ \ s -> s {
-		igsCurrentPos = doMove (igsCurrentPos s) move,
-		igsMyNextMove = igsMyNextMove s + if pColourToMove (igsCurrentPos s) == igsMyColour s then 1 else 0 }
-	igs <- get
-	liftIO $ print (igsCurrentPos igs)
-	logMsg $ "MOVED:\n" ++ show igs ++ "\n"
--}
-{-
-
-data LichessCommand =
-	SendMove Move
-	deriving Show
-
-listenForCommandsG :: LichessChan -> InGameM ()
-listenForCommandsG inputchan = forever $ do
-	command <- readChan inputchan
-	liftIO $ putStrLn $ "listenForCommandsG: Got " ++ show command
-	case command of
-		SendMove move -> sendMoveG move
--}
-
-{-
-listenForLichessG :: ConfluenceChan -> InGameM ()
-listenForLichessG outputchan = forever $ receiveG >>= handlemsg
+waitForMoveG :: (MonadIO m) => Position -> InGameM m (Either Move MatchResult)
+waitForMoveG pos = do
+	liftIO $ putStrLn "WAITING FOR MOVE G"
+	receiveG >>= handlemsg . (:[])
 	where
-	handlemsg (LichessMsg _ t mb_payload) = do
-		mb_msg <- case (t,mb_payload) of
-			(_,Just (PMessages msgs)) -> sequence_ (map handlemsg msgs) >> return Nothing
-			(_,Just (PLiMove limove)) -> return $ Just $ LichessMove $ uci (limove::LiMove)
-{-
-				Position{..} <- gets igsCurrentPos
-				when (pNextMoveNumber*2-1 + (if pColourToMove==White then 0 else 1) == ply (limove::LiMove)) $ do
-					doMoveG limove
-					sharedModify $ \ s -> s { igsMyMoveSent = False }
--}
+	handlemsg [] = waitForMoveG pos
+	handlemsg ((LichessMsg _ t mb_payload):rs) = do
+		case (t,mb_payload) of
+
+			(_,Just (PMessages msgs)) -> handlemsg $ msgs ++ rs
+
+			(_,Just (PLiMove limove)) -> do
+				let
+					MoveFromTo from to mb_promote = uci (limove::LiMove)
+					move_ply = ply (limove::LiMove)
+					pos_ply = pNextMoveNumber pos * 2 - 1 + if pColourToMove pos == White then 0 else 1
+				case move_ply == pos_ply of
+					False -> handlemsg rs
+					True -> do
+						liftIO $ putStrLn $ "========= GOT " ++ show (from,to) 
+						return $ Left $ head [ move |
+							move@Move{..} <- moveGen pos, moveFrom==from, moveTo==to, movePromote==mb_promote ]
+
 			("n",_) -> do
 				now <- liftIO $ getTime Monotonic
-				mb_lastping <- sharedGets igsLastPing
+				mb_lastping <- gets igsLastPing
 				case mb_lastping of
 					Just lastping -> do
 						let lag_ns = toNanoSecs $ diffTimeSpec now lastping
 --						liftIO $ putStrLn $ "### Lag = " ++ show (div lag_ns 1000000) ++ " ms"
-						sharedModify $ \ s -> s { igsLastPing = Nothing }
+						modify $ \ s -> s { igsLastPing = Nothing }
 					Nothing -> return ()
-				return Nothing
+				handlemsg rs
+
 			(_,Just (PEndData (EndData winnerordraw gamestatus))) -> do
-				sharedModify $ \ s -> s { igsGameInProgress = False }
-				return $ Just $ LichessGameEnd $ case winnerordraw of
+				return $ Right $ case winnerordraw of
 					WDWinner colour -> Winner colour Checkmate  -- TODO: WinReason herausfinden
 					WDDraw          -> Draw NoMatePossible      -- TODO: DrawReason herausfinden
-			(_,Just (PCrowd crowd)) -> return Nothing
+
+			(_,Just (PCrowd crowd)) -> handlemsg rs
+
 			(t,Just (PUnknown v)) -> do
 				liftIO $ putStrLn $ "###### listenForLichessG: Could not parse t=" ++ show t ++ ": " ++ show v
-				return Nothing
+				handlemsg rs
+
 			unknown -> do
 				liftIO $ putStrLn $ "###### listenForLichessG: No impl. for " ++ show unknown
-				return Nothing
-
-		case mb_msg of
-			Nothing  -> return ()
-			Just msg -> do
-				writeChan outputchan msg
-				logMsg $ "messageLoopG: writeChan " ++ show msg
--}
-
-{-
-forkLichessThread :: String -> String -> Chan LichessCommand -> Chan ConfluenceMsg -> IO (Position,Colour)
-forkLichessThread username pw inputchan outputchan = withLoginL username pw $ \ user -> do
-	gamedata <- case nowPlaying (user::User) of
-		Just (game:_) -> joinGameL (gameId game)
-		_             -> startGameL Nothing (Just White)
-	inGameL gamedata $ do
-		fork $ ( do
-			forever $ do
-				pingG
-				threadDelay (1500*1000) )
-			`catchIO` (const $ return ())
-		fork $ listenForCommandsG inputchan
-		fork $ listenForLichessG outputchan
-		return ()
--}
+				handlemsg rs
