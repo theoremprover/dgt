@@ -16,17 +16,9 @@ import Data.Char
 import Data.Array
 import Data.Bits
 import qualified Data.Set as Set
---import Control.Monad.Loops
---import Control.Concurrent.Chan.Lifted
---import Control.Concurrent.Lifted (fork,ThreadId)
 import Control.Monad.Trans.State.Strict (StateT,evalStateT,get)
 
---import Confluence
---import SharedState
---import TunnelState
 import Chess200
-
---type DGTChan = Chan DGTCommand
 
 serialportSettings = SerialPortSettings CS9600 8 One NoParity NoFlowControl 1
 
@@ -64,15 +56,10 @@ dGT_CLOCK_SEND_VERSION = 0x09
 data DGTState = DGTState {
 	dgtsSerialPort :: SerialPort }
 
-{-
-class HasDGTState s where
-	getDGTState :: s -> DGTState
-	setDGTState :: DGTState -> s -> s
--}
-
 type DGTM = StateT DGTState
 
 withDGT :: String -> DGTM IO a -> IO a
+withDGT "" m = 
 withDGT comport m = withSerial comport serialportSettings $ \ serialport -> do
 	flip evalStateT (DGTState serialport) $ do
 		sendDGT dGT_SEND_RESET []
