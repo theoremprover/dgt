@@ -17,6 +17,7 @@ import Data.Array
 import Data.Bits
 import qualified Data.Set as Set
 import Control.Monad.Trans.State.Strict (StateT,evalStateT,get)
+import Data.Maybe (fromJust)
 
 import Chess200
 
@@ -54,14 +55,13 @@ dGT_CLOCK_ASCII = 0x0c
 dGT_CLOCK_SEND_VERSION = 0x09
 
 data DGTState = DGTState {
-	dgtsSerialPort :: SerialPort }
+	dgtsSerialPort :: Maybe SerialPort }
 
 type DGTM = StateT DGTState
 
 withDGT :: String -> DGTM IO a -> IO a
---withDGT "" m = 
 withDGT comport m = withSerial comport serialportSettings $ \ serialport -> do
-	flip evalStateT (DGTState serialport) $ do
+	flip evalStateT (DGTState $ Just serialport) $ do
 		sendDGT dGT_SEND_RESET []
 		m
 
@@ -70,18 +70,18 @@ withDGTState m = get >>= m
 
 sendDGT :: (MonadIO m) => Char -> [Int] -> DGTM m ()
 sendDGT msg_id msg = withDGTState $ \ DGTState{..} -> do
-	n <- liftIO $ send dgtsSerialPort (BS.pack $ msg_id : map chr msg)
+	n <- liftIO $ send (fromJust dgtsSerialPort) (BS.pack $ msg_id : map chr msg)
 	when (length msg + 1 /= n) $ error $ printf "Sending %s" (show msg)
 
 recvDGT :: (MonadIO m) => Int -> DGTM m (Maybe (Char,[Int]))
 recvDGT time_out = withDGTState $ \ DGTState{..} -> do
-	mb_header_bs <- liftIO $ System.Timeout.timeout time_out $ rec_part dgtsSerialPort 3
+	mb_header_bs <- liftIO $ System.Timeout.timeout time_out $ rec_part (fromJust dgtsSerialPort) 3
 	case mb_header_bs of
 		Nothing -> return Nothing
 		Just header_bs -> do
 			let [msg_id,len_hi,len_lo] = map ord $ BS.unpack header_bs
 			let payload_length = (shift len_hi 7 .|. len_lo) - 3
-			msg_bs <- liftIO $ rec_part dgtsSerialPort payload_length
+			msg_bs <- liftIO $ rec_part (fromJust dgtsSerialPort) payload_length
 			return $ Just (chr $ msg_id .&. 0x7f,map ord $ BS.unpack msg_bs)
 	where
 	rec_part sp rest = do

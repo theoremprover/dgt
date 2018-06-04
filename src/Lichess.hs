@@ -41,17 +41,11 @@ import           Network.WebSockets.Stream
 import           System.Random
 import           Wuss
 import System.Clock
---import Control.Concurrent.MVar.Lifted
---import Control.Concurrent.Chan.Lifted
 
 import Log
 import Chess200
 import FEN
 import LichessInterface
---import SharedState
---import Confluence
-
---type LichessChan = Chan LichessCommand
 
 withLichessDo = withSocketsDo
 
@@ -234,6 +228,7 @@ waitForMoveG pos = do
 	handlemsg ((LichessMsg _ t mb_payload):rs) = do
 		case (t,mb_payload) of
 
+			("ack",Nothing) -> handlemsg rs
 			(_,Just (PMessages msgs)) -> handlemsg $ msgs ++ rs
 
 			(_,Just (PLiMove limove)) -> do
@@ -244,9 +239,11 @@ waitForMoveG pos = do
 				case move_ply == pos_ply of
 					False -> handlemsg rs
 					True -> do
-						liftIO $ putStrLn $ "========= GOT " ++ show (from,to) 
+						liftIO $ putStrLn $ "========= GOT " ++ show (from,to)
 						return $ Left $ head [ move |
-							move@Move{..} <- moveGen pos, moveFrom==from, moveTo==to, movePromote==mb_promote ]
+							move@Move{..} <- moveGen pos, moveFrom==from, moveTo==to, movePromote==mb_promote ] ++
+							[ move | move@(Castling col side) <- moveGen pos, col == pColourToMove pos,
+								let rank = baseRank col, 
 
 			("n",_) -> do
 				now <- liftIO $ getTime Monotonic
