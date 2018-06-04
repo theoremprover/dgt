@@ -7,7 +7,7 @@ module Main where
 import Control.Monad.IO.Class
 import Text.Printf
 import System.IO
-import Control.Monad (unless,forever)
+import Control.Monad (unless,forever,when)
 import Control.Monad.Loops
 import Control.Monad.Trans (lift)
 import Control.Monad.Trans.State.Strict (StateT,modify,get,gets,evalStateT)
@@ -37,7 +37,7 @@ main = withLichessDo $ do
 	comport <- readFile "dgtcom.txt"
 	let simuldgt = null comport
 	( case simuldgt of
-		True  -> flip evalStateT (DGTState undefined) 
+		True  -> flip evalStateT (DGTState Nothing) 
 		False -> withDGT comport ) $ do
 		pw <- liftIO $ readFile "pw.txt"
 		withLoginL "Threetee" pw $ \ user -> do
@@ -47,8 +47,9 @@ main = withLichessDo $ do
 			inGameL gamedata $ \ pos mycolour -> do			
 				flip evalStateT (MainS mycolour pos simuldgt) $ do
 					liftIO $ print pos
-					liftDGT $ displayTextDGT "Setup" True
-					waitForPosOnDGT
+					when (not simuldgt) $ do
+						liftDGT $ displayTextDGT "Setup" True
+						waitForPosOnDGT
 					gameLoop
 
 gameLoop = do
@@ -69,7 +70,7 @@ gameLoop = do
 			return $ Left move
 		False -> do
 			liftIO $ putStrLn "Waiting for Lichess move..."
-			liftDGT $ displayTextDGT "Wait" False
+			when (not simuldgt) $ liftDGT $ displayTextDGT "Wait" False
 			liftInGame $ waitForMoveG pos
 
 	mb_matchresult <- case move_or_end of
@@ -81,8 +82,9 @@ gameLoop = do
 				True -> liftInGame $ do
 					sendMoveG move
 				False -> do
-					liftDGT $ displayTextDGT (show move) True
-					waitForPosOnDGT
+					when (not simuldgt) $ do
+						liftDGT $ displayTextDGT (show move) True
+						waitForPosOnDGT
 
 			return $ snd $ rate pos'
 		Right matchresult -> return $ Just matchresult
