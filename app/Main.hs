@@ -100,9 +100,9 @@ waitForPosOnDGT = do
 	pos <- gets msPosition
 	liftDGT $ do
 		iterateUntil (== pBoard pos) $ do
-			liftIO $ putStrLn "waitFieldUpdateDGT..."
+--			liftIO $ putStrLn "waitFieldUpdateDGT..."
 			waitFieldUpdateDGT
-			liftIO $ putStrLn "getBoardDGT..."
+--			liftIO $ putStrLn "getBoardDGT..."
 			getBoardDGT
 		liftIO $ putStrLn "OK"
 		displayTextDGT "OK" True

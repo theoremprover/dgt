@@ -199,7 +199,7 @@ sendG lichessmsg = do
 receiveG :: (MonadIO m) => InGameM m LichessMsg
 receiveG = do
 	InGameState{..} <- get
-	liftIO $ putStrLn $ "receiveG: receiveDataMessage"
+--	liftIO $ putStrLn $ "receiveG: receiveDataMessage"
 	datamsg <- liftIO $ receiveDataMessage igsConnection
 	let (lichessmsg,x) :: (LichessMsg,String) = case datamsg of
 		Text   x -> (fromLazyByteString x,BSL8.unpack x)
@@ -207,7 +207,7 @@ receiveG = do
 --	liftIO $ putStrLn $ "receiveG: " ++ x
 --	lichessmsg <- liftIO $ WS.receiveData igsConnection
 	liftIO $ putStrLn $ "receiveG: " ++ show lichessmsg
-	logMsg $ "RECV = " ++ x ++ "\n"
+--	logMsg $ "RECV = " ++ x ++ "\n"
 	logMsg $ "RECV: " ++ show lichessmsg ++ "\n"
 	return lichessmsg
 
@@ -240,10 +240,11 @@ waitForMoveG pos = do
 					False -> handlemsg rs
 					True -> do
 						liftIO $ putStrLn $ "========= GOT " ++ show (from,to)
-						return $ Left $ head [ move |
-							move@Move{..} <- moveGen pos, moveFrom==from, moveTo==to, movePromote==mb_promote ] ++
-							[ move | move@(Castling col side) <- moveGen pos, col == pColourToMove pos,
-								let rank = baseRank col, 
+						return $ Left $ head $ [ move | move <- moveGen pos,
+							case move of
+								Move{..}          -> moveFrom==from && moveTo==to && movePromote==mb_promote
+								Castling col side -> col == pColourToMove pos && from==(5,baseRank col) &&
+									to==(if side==Queenside then 1 else 8,baseRank col) ]
 
 			("n",_) -> do
 				now <- liftIO $ getTime Monotonic
