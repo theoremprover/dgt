@@ -41,17 +41,11 @@ import           Network.WebSockets.Stream
 import           System.Random
 import           Wuss
 import System.Clock
---import Control.Concurrent.MVar.Lifted
---import Control.Concurrent.Chan.Lifted
 
 import Log
 import Chess200
 import FEN
 import LichessInterface
---import SharedState
---import Confluence
-
---type LichessChan = Chan LichessCommand
 
 withLichessDo = withSocketsDo
 

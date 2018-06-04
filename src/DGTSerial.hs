@@ -59,7 +59,6 @@ data DGTState = DGTState {
 type DGTM = StateT DGTState
 
 withDGT :: String -> DGTM IO a -> IO a
-withDGT "" m = 
 withDGT comport m = withSerial comport serialportSettings $ \ serialport -> do
 	flip evalStateT (DGTState serialport) $ do
 		sendDGT dGT_SEND_RESET []
