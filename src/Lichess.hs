@@ -16,8 +16,6 @@ import           Control.Concurrent.Lifted
 import           Control.Exception
 import           Control.Exception.Enclosed
 import           Control.Monad
---import           Control.Monad.Loops (untilM_)
---import           Control.Monad.Trans.Class        (lift)
 import           Control.Monad.IO.Class           (MonadIO, liftIO)
 import           Control.Monad.Trans.Control
 import           Control.Monad.Trans.State.Strict
@@ -204,7 +202,7 @@ receiveG = do
 	let (lichessmsg,x) :: (LichessMsg,String) = case datamsg of
 		Text   x -> (fromLazyByteString x,BSL8.unpack x)
 		Binary x -> (fromLazyByteString x,BSL8.unpack x)
---	liftIO $ putStrLn $ "receiveG: " ++ x
+	liftIO $ putStrLn $ "receiveG: " ++ x
 --	lichessmsg <- liftIO $ WS.receiveData igsConnection
 	liftIO $ putStrLn $ "receiveG: " ++ show lichessmsg
 --	logMsg $ "RECV = " ++ x ++ "\n"
