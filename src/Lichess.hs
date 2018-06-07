@@ -94,9 +94,16 @@ withLoginL username password lichessm = do
 			liftIO $ putStrLn "OK, logged in."
 			let [Cookie{..}] = destroyCookieJar $ responseCookieJar response
 			clientid <- forM [1..10] $ \ _ -> liftIO $ getStdRandom (randomR ('a','z'))
-			evalStateT (lichessm user) $ LichessState {
+			ex_or_result <- tryJust catchOnlyEOF $ evalStateT (lichessm user) $ LichessState {
 				clientID      = clientid,
 				lisAuthCookie = BS.unpack cookie_name ++ "=" ++ BS.unpack cookie_value }
+			case ex_or_result of
+				Right a -> return a
+				Left ex -> do
+					liftIO $ putStrLn $ "Caught " ++ show ex ++ ", reconnecting after 2 sec..."
+					liftIO $ 
+	where
+	catchOnlyEOF ex = if isEOFError ex then Just () else Nothing
 
 startGameL :: (MonadIO m) => Maybe Position -> Maybe Colour -> LichessM m GameData
 startGameL mb_position mb_colour = do
@@ -171,7 +178,9 @@ inGameL gamedata ingamem = do
 			forever $ do
 				pingG
 				threadDelay (1500*1000) )
-			`catchIO` (const $ return ())
+			`catchIO` (\ ex -> do
+				liftIO $ print ex
+				return ())
 		ingamem pos mycolour
 		killThread pingthreadid
 		liftIO $ sendClose conn ()
@@ -189,9 +198,7 @@ pingG = do
 sendG :: (MonadIO m) => LichessMsg -> InGameM m ()
 sendG lichessmsg = do
 	InGameState{..} <- get
---	liftIO $ putStrLn $ "sendG " ++ show (toJSON lichessmsg)
 	liftIO $ WS.sendTextData igsConnection lichessmsg
---	sharedModify $ \ s -> s { igsMyMoveSent = True }
 	logMsg $ "SENT: " ++ show lichessmsg ++ "\n"
 
 receiveG :: (MonadIO m) => InGameM m LichessMsg
@@ -202,7 +209,7 @@ receiveG = do
 	let (lichessmsg,x) :: (LichessMsg,String) = case datamsg of
 		Text   x -> (fromLazyByteString x,BSL8.unpack x)
 		Binary x -> (fromLazyByteString x,BSL8.unpack x)
-	liftIO $ putStrLn $ "receiveG: " ++ x
+--	liftIO $ putStrLn $ "receiveG: " ++ x
 --	lichessmsg <- liftIO $ WS.receiveData igsConnection
 	liftIO $ putStrLn $ "receiveG: " ++ show lichessmsg
 --	logMsg $ "RECV = " ++ x ++ "\n"
