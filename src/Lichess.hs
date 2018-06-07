@@ -16,6 +16,7 @@ import           Control.Concurrent.Lifted
 import           Control.Exception
 import           Control.Exception.Enclosed
 import           Control.Monad
+import           Control.Monad.Loops
 import           Control.Monad.IO.Class           (MonadIO, liftIO)
 import           Control.Monad.Trans.Control
 import           Control.Monad.Trans.State.Strict
@@ -94,16 +95,9 @@ withLoginL username password lichessm = do
 			liftIO $ putStrLn "OK, logged in."
 			let [Cookie{..}] = destroyCookieJar $ responseCookieJar response
 			clientid <- forM [1..10] $ \ _ -> liftIO $ getStdRandom (randomR ('a','z'))
-			ex_or_result <- tryJust catchOnlyEOF $ evalStateT (lichessm user) $ LichessState {
+			evalStateT (lichessm user) $ LichessState {
 				clientID      = clientid,
 				lisAuthCookie = BS.unpack cookie_name ++ "=" ++ BS.unpack cookie_value }
-			case ex_or_result of
-				Right a -> return a
-				Left ex -> do
-					liftIO $ putStrLn $ "Caught " ++ show ex ++ ", reconnecting after 2 sec..."
-					liftIO $ 
-	where
-	catchOnlyEOF ex = if isEOFError ex then Just () else Nothing
 
 startGameL :: (MonadIO m) => Maybe Position -> Maybe Colour -> LichessM m GameData
 startGameL mb_position mb_colour = do
@@ -130,62 +124,64 @@ type InGameM = StateT InGameState
 
 data InGameState = InGameState {
 	igsConnection     :: WS.Connection,
---	igsMyColour       :: Colour,
---	igsCurrentPos     :: Position,
 	igsSocketURL      :: String,
 	igsCurrentGameID  :: String,
---	igsMyNextMove     :: Int,
---	igsGameInProgress :: Bool,
---	igsMyMoveSent     :: Bool,
 	igsLastPing       :: Maybe TimeSpec }
 	deriving Show
 instance Show WS.Connection where
 	show _ = "<SOME CONNECTION>"
 
-inGameL :: (MonadIO m,MonadBaseControl IO m) => GameData -> (Position -> Colour -> InGameM (LichessM m) ()) -> LichessM m ()
+inGameL :: (MonadIO m,MonadBaseControl IO m) => GameData -> (Position -> Colour -> InGameM (LichessM m) a) -> LichessM m a
 inGameL gamedata ingamem = do
 	let
 		cur_game      = game (gamedata::GameData)
 		currentgameid = LichessInterface.id (cur_game :: CreatedGame)
 		socketurl     = LichessInterface.round (url gamedata)
 		mycolour      = player (cur_game::CreatedGame)
+		Right pos@Position{..} = fromFEN (fen (cur_game::CreatedGame))
+	logMsg $ "FEN: " ++ fen (cur_game::CreatedGame)
 	logMsg $ show gamedata ++ "\n"
 	LichessState{..} <- get
-	let path = socketurl ++ "/socket/v2?sri=" ++ clientID
-	liftIO $ putStrLn $ "path=" ++ path
 	let
-		(host,port,options) = ("socket.lichess.org",443,defaultConnectionOptions)
+		path = socketurl ++ "/socket/v2?sri=" ++ clientID
+		(host,port) = ("socket.lichess.org",443)
 		headers = [ ("Cookie",BS.pack lisAuthCookie) ]
-	liftIO $ print headers
-	context <- liftIO $ initConnectionContext -- TODO: Einfacher, gegebene Funktionen benutzen?
-	connection <- liftIO $ connectTo context $ ConnectionParams {
-		connectionHostname  = host,
-		connectionPort      = port,
-		connectionUseSecure = Just $ TLSSettingsSimple {
-			settingDisableCertificateValidation = False,
-			settingDisableSession               = False,
-			settingUseServerName                = False },
-		connectionUseSocks  = Nothing }
-	stream <- liftIO $ makeStream
-		(fmap Just (connectionGetChunk connection))
-		(maybe (return ()) (connectionPut connection . BSL.toStrict))
-	conn <- liftIO $ WS.runClientWithStream stream host path options headers return
-	logMsg $ "FEN: " ++ fen (cur_game::CreatedGame)
-	let Right pos@Position{..} = fromFEN (fen (cur_game::CreatedGame))
+--	liftIO $ print headers
 
-	flip evalStateT (InGameState conn socketurl currentgameid Nothing) $ do
-		pingthreadid <- fork $ ( do
-			forever $ do
-				pingG
-				threadDelay (1500*1000) )
-			`catchIO` (\ ex -> do
-				liftIO $ print ex
-				return ())
-		ingamem pos mycolour
-		killThread pingthreadid
-		liftIO $ sendClose conn ()
+	untilJust $ do
+		ex_or_result <- tryIO $ do
 
-	return ()
+			context <- liftIO $ initConnectionContext -- TODO: Einfacher, gegebene Funktionen benutzen?
+			connection <- liftIO $ connectTo context $ ConnectionParams {
+				connectionHostname  = host,
+				connectionPort      = port,
+				connectionUseSecure = Just $ TLSSettingsSimple {
+					settingDisableCertificateValidation = False,
+					settingDisableSession               = False,
+					settingUseServerName                = False },
+				connectionUseSocks  = Nothing }
+			stream <- liftIO $ makeStream
+				(fmap Just (connectionGetChunk connection))
+				(maybe (return ()) (connectionPut connection . BSL.toStrict))
+			conn <- liftIO $ WS.runClientWithStream stream host path defaultConnectionOptions headers return
+
+			flip evalStateT (InGameState conn socketurl currentgameid Nothing) $ do
+				pingthreadid <- fork $ do
+					forever $ do
+						threadDelay (1500*1000)
+						pingG
+					`catchIO` (\ ex -> liftIO $ putStrLn $ "pingthread died: " ++ show ex)
+
+				ingamem pos mycolour
+
+		case ex_or_result of
+			Right a -> return $ Just a
+			Left ex -> do
+				liftIO $ putStrLn $ "Caught " ++ show ex ++ ", reconnecting after 2 sec..."
+				threadDelay (2000*1000)
+				return Nothing
+--	where
+--	catch_only_EOF ex = if isEOFError ex then Just () else Nothing
 
 pingG :: (MonadIO m) => InGameM m ()
 pingG = do

@@ -99,10 +99,12 @@ waitForPosOnDGT = do
 	liftIO $ putStrLn "waitForPosOnDGT..."
 	pos <- gets msPosition
 	liftDGT $ do
-		iterateUntil (== pBoard pos) $ do
---			liftIO $ putStrLn "waitFieldUpdateDGT..."
-			waitFieldUpdateDGT
---			liftIO $ putStrLn "getBoardDGT..."
-			getBoardDGT
-		liftIO $ putStrLn "OK"
+		waitloop (pBoard pos)
 		displayTextDGT "OK" True
+	liftIO $ putStrLn "OK"
+	where
+	waitloop desired_board = do
+		board <- getBoardDGT
+		when (board /= desired_board) $ do
+			waitFieldUpdateDGT
+			waitloop desired_board
