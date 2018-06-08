@@ -143,7 +143,6 @@ inGameL gameid simuldgt ingamem = do
 	gamedata <- getGameDataL gameid
 	let
 		cur_game      = game (gamedata::GameData)
-		currentgameid = LichessInterface.id (cur_game :: CreatedGame)
 		socketurl     = LichessInterface.round (url gamedata)
 		mycolour      = player (cur_game::CreatedGame)
 		Right pos@Position{..} = fromFEN (fen (cur_game::CreatedGame))
