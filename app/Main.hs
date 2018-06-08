@@ -21,13 +21,6 @@ import Lichess
 import LichessInterface
 
 
-data MainS = MainS {
-	msMyColour       :: Colour,
-	msPosition       :: Position,
-	msSimulDGT       :: Bool
-	}
-type MainM = StateT MainS
-
 liftDGT = lift . lift . lift
 liftInGame = lift
 
@@ -41,16 +34,16 @@ main = withLichessDo $ do
 		False -> withDGT comport ) $ do
 		pw <- liftIO $ readFile "pw.txt"
 		withLoginL "Threetee" pw $ \ user -> do
-			gamedata <- case nowPlaying (user::User) of
-				Just (game:_) -> joinGameL (gameId game)
+			gameid <- case nowPlaying (user::User) of
+				Just (game:_) -> return (gameId game)
 				_             -> startGameL Nothing (Just White)
-			inGameL gamedata $ \ pos mycolour -> do			
-				flip evalStateT (MainS mycolour pos simuldgt) $ do
-					liftIO $ print pos
-					when (not simuldgt) $ do
-						liftDGT $ displayTextDGT "Setup" True
-						waitForPosOnDGT
-					gameLoop
+			
+			inGameL gameid simuldgt $ do			
+				liftIO $ print pos
+				when (not simuldgt) $ do
+					liftDGT $ displayTextDGT "Setup" True
+					waitForPosOnDGT
+				gameLoop
 
 gameLoop = do
 	MainS mycol pos simuldgt <- get

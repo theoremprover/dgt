@@ -99,7 +99,7 @@ withLoginL username password lichessm = do
 				clientID      = clientid,
 				lisAuthCookie = BS.unpack cookie_name ++ "=" ++ BS.unpack cookie_value }
 
-startGameL :: (MonadIO m) => Maybe Position -> Maybe Colour -> LichessM m GameData
+startGameL :: (MonadIO m) => Maybe Position -> Maybe Colour -> LichessM m String
 startGameL mb_position mb_colour = do
 	liftIO $ putStrLn "startGameL..."
 	let pos = maybe initialPosition Prelude.id mb_position
@@ -112,10 +112,10 @@ startGameL mb_position mb_colour = do
 		("timeMode",Just "0"),
 		("variant",Just "1") ] []
 	liftIO $ print status
-	return gamedata
+	return $ LichessInterface.id (game (gamedata::GameData) :: CreatedGame)
 
-joinGameL :: (MonadIO m) => String -> LichessM m GameData
-joinGameL gameid = do
+getGameDataL :: (MonadIO m) => String -> LichessM m GameData
+getGameDataL gameid = do
 	(status,gamedata) <- lichessRequestL "GET" "lichess.org" ("/"++gameid) [] []
 	liftIO $ print status
 	return gamedata
@@ -131,8 +131,16 @@ data InGameState = InGameState {
 instance Show WS.Connection where
 	show _ = "<SOME CONNECTION>"
 
-inGameL :: (MonadIO m,MonadBaseControl IO m) => GameData -> (Position -> Colour -> InGameM (LichessM m) a) -> LichessM m a
-inGameL gamedata ingamem = do
+data MainS = MainS {
+	msMyColour       :: Colour,
+	msPosition       :: Position,
+	msSimulDGT       :: Bool
+	}
+type MainM = StateT MainS
+
+inGameL :: (MonadIO m,MonadBaseControl IO m) => String -> Bool -> InGameM (LichessM m) a -> LichessM m a
+inGameL gameid simuldgt ingamem = do
+	gamedata <- getGameDataL gameid
 	let
 		cur_game      = game (gamedata::GameData)
 		currentgameid = LichessInterface.id (cur_game :: CreatedGame)
@@ -148,38 +156,38 @@ inGameL gamedata ingamem = do
 		headers = [ ("Cookie",BS.pack lisAuthCookie) ]
 --	liftIO $ print headers
 
-	untilJust $ do
-		ex_or_result <- tryIO $ do
+				flip evalStateT (MainS mycolour pos simuldgt) $ do
+	ex_or_result <- tryIO $ do
 
-			context <- liftIO $ initConnectionContext -- TODO: Einfacher, gegebene Funktionen benutzen?
-			connection <- liftIO $ connectTo context $ ConnectionParams {
-				connectionHostname  = host,
-				connectionPort      = port,
-				connectionUseSecure = Just $ TLSSettingsSimple {
-					settingDisableCertificateValidation = False,
-					settingDisableSession               = False,
-					settingUseServerName                = False },
-				connectionUseSocks  = Nothing }
-			stream <- liftIO $ makeStream
-				(fmap Just (connectionGetChunk connection))
-				(maybe (return ()) (connectionPut connection . BSL.toStrict))
-			conn <- liftIO $ WS.runClientWithStream stream host path defaultConnectionOptions headers return
+		context <- liftIO $ initConnectionContext -- TODO: Einfacher, gegebene Funktionen benutzen?
+		connection <- liftIO $ connectTo context $ ConnectionParams {
+			connectionHostname  = host,
+			connectionPort      = port,
+			connectionUseSecure = Just $ TLSSettingsSimple {
+				settingDisableCertificateValidation = False,
+				settingDisableSession               = False,
+				settingUseServerName                = False },
+			connectionUseSocks  = Nothing }
+		stream <- liftIO $ makeStream
+			(fmap Just (connectionGetChunk connection))
+			(maybe (return ()) (connectionPut connection . BSL.toStrict))
+		conn <- liftIO $ WS.runClientWithStream stream host path defaultConnectionOptions headers return
 
-			flip evalStateT (InGameState conn socketurl currentgameid Nothing) $ do
-				pingthreadid <- fork $ do
-					forever $ do
-						threadDelay (1500*1000)
-						pingG
-					`catchIO` (\ ex -> liftIO $ putStrLn $ "pingthread died: " ++ show ex)
+		flip evalStateT (InGameState conn socketurl currentgameid Nothing) $ do
+			pingthreadid <- fork $ do
+				forever $ do
+					threadDelay (1500*1000)
+					pingG
+				`catchIO` (\ ex -> liftIO $ putStrLn $ "pingthread died: " ++ show ex)
 
-				ingamem pos mycolour
+			ingamem pos mycolour
 
-		case ex_or_result of
-			Right a -> return $ Just a
-			Left ex -> do
-				liftIO $ putStrLn $ "Caught " ++ show ex ++ ", reconnecting after 2 sec..."
-				threadDelay (2000*1000)
-				return Nothing
+	case ex_or_result of
+		Right a -> return $ Just a
+		Left ex -> do
+			liftIO $ putStrLn $ "Caught " ++ show ex ++ ", reconnecting after 2 sec..."
+			threadDelay (2000*1000)
+			inGameL gameid ingamem
 --	where
 --	catch_only_EOF ex = if isEOFError ex then Just () else Nothing
 
