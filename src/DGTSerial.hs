@@ -109,11 +109,6 @@ displayTextDGT text beep = do
 		map ord (take 8 $ text ++ repeat ' ') ++ [0,if beep then 3 else 1,dGT_CLOCK_END_MESSAGE]
 	sendDGT dGT_CLOCK_MESSAGE (length msg : msg)
 
-{-
-displayClockDGT = do
-	sendDGT dGT_CLOCK_END []
--}
-
 data TimeLeft = TimeLeft Int Int Int
 instance Show TimeLeft where
 	show (TimeLeft h m s) = printf "%02i:%02i:%02i" h m s

@@ -126,7 +126,10 @@ data InGameState = InGameState {
 	igsConnection     :: WS.Connection,
 	igsSocketURL      :: String,
 	igsCurrentGameID  :: String,
-	igsLastPing       :: Maybe TimeSpec }
+	igsLastPing       :: Maybe TimeSpec,
+	igsMyColour       :: Colour,
+	igsPosition       :: Position
+ }
 	deriving Show
 instance Show WS.Connection where
 	show _ = "<SOME CONNECTION>"
@@ -143,9 +146,9 @@ inGameL gameid ingamem = do
 	logMsg $ show gamedata ++ "\n"
 	LichessState{..} <- get
 	let
-		path = socketurl ++ "/socket/v2?sri=" ++ clientID
+		path        = socketurl ++ "/socket/v2?sri=" ++ clientID
 		(host,port) = ("socket.lichess.org",443)
-		headers = [ ("Cookie",BS.pack lisAuthCookie) ]
+		headers     = [ ("Cookie",BS.pack lisAuthCookie) ]
 --	liftIO $ print headers
 
 	ex_or_result <- tryIO $ do
@@ -164,17 +167,17 @@ inGameL gameid ingamem = do
 			(maybe (return ()) (connectionPut connection . BSL.toStrict))
 		conn <- liftIO $ WS.runClientWithStream stream host path defaultConnectionOptions headers return
 
-		flip evalStateT (InGameState conn socketurl currentgameid Nothing) $ do
+		flip evalStateT (InGameState conn socketurl gameid Nothing mycolour pos) $ do
 			pingthreadid <- fork $ do
 				forever $ do
 					threadDelay (1500*1000)
 					pingG
 				`catchIO` (\ ex -> liftIO $ putStrLn $ "pingthread died: " ++ show ex)
 
-			ingamem pos mycolour
+			ingamem
 
 	case ex_or_result of
-		Right a -> return $ Just a
+		Right a -> return a
 		Left ex -> do
 			liftIO $ putStrLn $ "Caught " ++ show ex ++ ", reconnecting after 2 sec..."
 			threadDelay (2000*1000)
@@ -196,6 +199,7 @@ sendG lichessmsg = do
 	liftIO $ WS.sendTextData igsConnection lichessmsg
 	logMsg $ "SENT: " ++ show lichessmsg ++ "\n"
 
+{-
 receiveG :: (MonadIO m) => InGameM m LichessMsg
 receiveG = do
 	InGameState{..} <- get
@@ -210,6 +214,14 @@ receiveG = do
 --	logMsg $ "RECV = " ++ x ++ "\n"
 	logMsg $ "RECV: " ++ show lichessmsg ++ "\n"
 	return lichessmsg
+-}
+receiveG :: (MonadIO m) => InGameM m LichessMsg
+receiveG = do
+	InGameState{..} <- get
+	lichessmsg <- liftIO $ WS.receiveData igsConnection
+	liftIO $ putStrLn $ "receiveG: " ++ show lichessmsg
+	logMsg $ "RECV: " ++ show lichessmsg ++ "\n"
+	return lichessmsg
 
 sendMoveG :: (MonadIO m) => Move -> InGameM m ()
 sendMoveG move = do
@@ -219,12 +231,12 @@ sendMoveG move = do
 		Castling col Kingside  -> ((5,baseRank col),(7,baseRank col),Nothing)
 	sendG $ LichessMsg Nothing "move" $ Just $ PMyMove $ MyMove $ MoveFromTo from to prom
 
-waitForMoveG :: (MonadIO m) => Position -> InGameM m (Either Move MatchResult)
-waitForMoveG pos = do
+waitForMoveG :: (MonadIO m) => InGameM m (Either Move MatchResult)
+waitForMoveG = do
 	liftIO $ putStrLn "WAITING FOR MOVE G"
 	receiveG >>= handlemsg . (:[])
 	where
-	handlemsg [] = waitForMoveG pos
+	handlemsg [] = waitForMoveG
 	handlemsg ((LichessMsg _ t mb_payload):rs) = do
 		case (t,mb_payload) of
 
@@ -232,6 +244,7 @@ waitForMoveG pos = do
 			(_,Just (PMessages msgs)) -> handlemsg $ msgs ++ rs
 
 			(_,Just (PLiMove limove)) -> do
+				pos <- gets igsPosition
 				let
 					MoveFromTo from to mb_promote = uci (limove::LiMove)
 					move_ply = ply (limove::LiMove)
