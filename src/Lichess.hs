@@ -131,15 +131,8 @@ data InGameState = InGameState {
 instance Show WS.Connection where
 	show _ = "<SOME CONNECTION>"
 
-data MainS = MainS {
-	msMyColour       :: Colour,
-	msPosition       :: Position,
-	msSimulDGT       :: Bool
-	}
-type MainM = StateT MainS
-
-inGameL :: (MonadIO m,MonadBaseControl IO m) => String -> Bool -> InGameM (LichessM m) a -> LichessM m a
-inGameL gameid simuldgt ingamem = do
+inGameL :: (MonadIO m,MonadBaseControl IO m) => String -> InGameM (LichessM m) a -> LichessM m a
+inGameL gameid ingamem = do
 	gamedata <- getGameDataL gameid
 	let
 		cur_game      = game (gamedata::GameData)
@@ -155,7 +148,6 @@ inGameL gameid simuldgt ingamem = do
 		headers = [ ("Cookie",BS.pack lisAuthCookie) ]
 --	liftIO $ print headers
 
-				flip evalStateT (MainS mycolour pos simuldgt) $ do
 	ex_or_result <- tryIO $ do
 
 		context <- liftIO $ initConnectionContext -- TODO: Einfacher, gegebene Funktionen benutzen?

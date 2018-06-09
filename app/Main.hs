@@ -24,6 +24,13 @@ import LichessInterface
 liftDGT = lift . lift . lift
 liftInGame = lift
 
+data MainS = MainS {
+	msMyColour       :: Colour,
+	msPosition       :: Position,
+	msSimulDGT       :: Bool
+	}
+type MainM = StateT MainS
+
 main = withLichessDo $ do
 	initLog
 	
@@ -38,12 +45,13 @@ main = withLichessDo $ do
 				Just (game:_) -> return (gameId game)
 				_             -> startGameL Nothing (Just White)
 			
-			inGameL gameid simuldgt $ do			
-				liftIO $ print pos
-				when (not simuldgt) $ do
-					liftDGT $ displayTextDGT "Setup" True
-					waitForPosOnDGT
-				gameLoop
+			inGameL gameid $ do			
+				flip evalStateT (MainS mycolour pos simuldgt) $ do
+					liftIO $ print pos
+					when (not simuldgt) $ do
+						liftDGT $ displayTextDGT "Setup" True
+						waitForPosOnDGT
+					gameLoop
 
 gameLoop = do
 	MainS mycol pos simuldgt <- get
